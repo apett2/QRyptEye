@@ -25,8 +25,11 @@ import com.qrypteye.app.databinding.ActivityScanQrBinding
 import com.qrypteye.app.qr.QRCodeManager
 import java.security.PrivateKey
 import java.security.PublicKey
+import java.security.SecureRandom
+import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import com.qrypteye.app.data.ContactValidator
 
 class ScanQRActivity : AppCompatActivity() {
     
@@ -44,6 +47,13 @@ class ScanQRActivity : AppCompatActivity() {
     
     companion object {
         private const val CAMERA_PERMISSION_REQUEST = 100
+        private val secureRandom = SecureRandom()
+        
+        private fun generateSecureId(): String {
+            val bytes = ByteArray(16)
+            secureRandom.nextBytes(bytes)
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +91,7 @@ class ScanQRActivity : AppCompatActivity() {
     
     private fun setupUI() {
         binding.toolbar.setNavigationOnClickListener {
-            onBackPressed()
+            finish()
         }
         
         binding.copyMessageButton.setOnClickListener {
@@ -99,11 +109,13 @@ class ScanQRActivity : AppCompatActivity() {
     }
     
     private fun loadUserKeyPair() {
-        // Load user's key pair from persistent storage
-        val keyPairData = dataManager.loadKeyPair()
-        if (keyPairData != null) {
+        // Load user's key pair from Android Keystore
+        val keyPair = dataManager.loadKeyPair()
+        if (keyPair != null) {
             try {
-                userPrivateKey = cryptoManager.importPrivateKey(keyPairData.privateKeyString)
+                // SECURITY: Private key is accessed directly from KeyPair object
+                // No serialization or string conversion
+                userPrivateKey = keyPair.private
             } catch (e: Exception) {
                 showError("Failed to load user key pair: ${e.message}")
             }
@@ -256,6 +268,10 @@ class ScanQRActivity : AppCompatActivity() {
                         showError(getString(R.string.authenticity_failed))
                         isProcessingQR = false
                     }
+                    is CryptoManager.VerificationResult.ReplayAttack -> {
+                        showError("⚠️ Replay attack detected: This message is too old or from the future")
+                        isProcessingQR = false
+                    }
                     is CryptoManager.VerificationResult.DecryptionFailed -> {
                         showError("Decryption failed: ${result.error}")
                         isProcessingQR = false
@@ -286,7 +302,7 @@ class ScanQRActivity : AppCompatActivity() {
             if (senderContact != null) {
                 val userName = dataManager.getUserName()
                 val receivedMessage = Message(
-                    id = java.util.UUID.randomUUID().toString(),
+                    id = generateSecureId(),
                     senderName = senderContact.name,
                     recipientName = userName,
                     content = messageContent,
@@ -294,14 +310,20 @@ class ScanQRActivity : AppCompatActivity() {
                     isOutgoing = false,
                     isRead = false
                 )
-                dataManager.addMessage(receivedMessage)
+                
+                // SECURITY: Verify and add message with cryptographic signature verification
+                val wasVerified = dataManager.verifyAndAddMessage(receivedMessage, senderPublicKey)
+                
+                if (!wasVerified) {
+                    showError("⚠️ Message authenticity verification failed")
+                }
             }
         } catch (e: Exception) {
             // Log error securely without stack trace
         }
     }
     
-    private fun getSenderPublicKey(signedMessage: CryptoManager.SignedEncryptedMessage): PublicKey? {
+    private fun getSenderPublicKey(_signedMessage: CryptoManager.SignedEncryptedMessage): PublicKey? {
         // TODO: Extract sender information from the message and look up their public key
         // For now, we'll need to implement a way to identify the sender
         // This could be done by including sender info in the signed message
@@ -322,11 +344,51 @@ class ScanQRActivity : AppCompatActivity() {
         try {
             val publicKeyData = qrCodeManager.parsePublicKeyData(qrContent)
             if (publicKeyData != null) {
-                // Create contact from public key data
-                val contact = Contact(
-                    name = publicKeyData.contactName,
-                    publicKeyString = publicKeyData.publicKey
-                )
+                // SECURITY: Check for replay attacks on public key import
+                val currentTime = System.currentTimeMillis()
+                val maxAge = 24 * 60 * 60 * 1000L // 24 hours
+                val maxFuture = 5 * 60 * 1000L // 5 minutes for clock skew
+                
+                if (currentTime - publicKeyData.timestamp > maxAge) {
+                    showError("⚠️ Replay attack detected: Public key QR code is too old")
+                    isProcessingQR = false
+                    return
+                }
+                
+                if (publicKeyData.timestamp - currentTime > maxFuture) {
+                    showError("⚠️ Invalid timestamp: Public key QR code is from the future")
+                    isProcessingQR = false
+                    return
+                }
+                
+                // Create contact from public key data with comprehensive validation
+                val contact = try {
+                    Contact.createContactFromString(
+                        name = publicKeyData.contactName,
+                        publicKeyString = publicKeyData.publicKey
+                    )
+                } catch (e: IllegalArgumentException) {
+                    // Attempt to repair the key if initial validation fails
+                    val repairResult = ContactValidator.attemptKeyRepair(publicKeyData.publicKey)
+                    if (repairResult is ContactValidator.RepairResult.Repaired) {
+                        try {
+                            Contact.createContactFromString(
+                                name = publicKeyData.contactName,
+                                publicKeyString = repairResult.repairedKey
+                            ).also {
+                                showSuccess("Public key repaired using ${repairResult.encodingUsed} encoding")
+                            }
+                        } catch (e2: IllegalArgumentException) {
+                            showError("Invalid public key format: ${e2.message}")
+                            isProcessingQR = false
+                            return
+                        }
+                    } else {
+                        showError("Invalid public key format: ${e.message}")
+                        isProcessingQR = false
+                        return
+                    }
+                }
                 
                 // Save contact to persistent storage
                 dataManager.addContact(contact)

@@ -22,6 +22,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.PrivateKey
 import java.security.PublicKey
+import java.security.SecureRandom
+import java.util.*
 
 class ComposeMessageActivity : AppCompatActivity() {
     
@@ -37,6 +39,14 @@ class ComposeMessageActivity : AppCompatActivity() {
     
     companion object {
         private val MAX_MESSAGE_LENGTH = QRCodeManager.MAX_MESSAGE_LENGTH
+        private const val REQUEST_CODE_IMPORT_CONTACT = 100
+        private val secureRandom = SecureRandom()
+        
+        private fun generateSecureId(): String {
+            val bytes = ByteArray(16)
+            secureRandom.nextBytes(bytes)
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,26 +170,49 @@ class ComposeMessageActivity : AppCompatActivity() {
             binding.encryptButton.isEnabled = false
             showError("No contacts found. Please import public keys first.")
         } else {
-            val contactNames = contacts.map { it.name }
-            val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, contactNames)
-            binding.recipientSpinner.setAdapter(adapter)
-            binding.recipientLayout.hint = "Select recipient"
-            binding.recipientSpinner.isEnabled = true
+            // Validate contacts and filter out invalid ones
+            val validContacts = contacts.filter { contact ->
+                if (contact.isValid()) {
+                    true
+                } else {
+                    // Log invalid contact for debugging
+                    val validationResult = contact.getValidationResult()
+                    showError("Invalid contact '${contact.name}': ${validationResult.message}")
+                    false
+                }
+            }
             
-            binding.recipientSpinner.setOnItemClickListener { _, _, position, _ ->
-                selectedContact = contacts[position]
-                // Store the selected contact to prevent timeout issues
-                binding.recipientSpinner.tag = selectedContact
+            if (validContacts.isEmpty()) {
+                // All contacts are invalid
+                binding.recipientLayout.hint = "No valid contacts available"
+                binding.recipientSpinner.setText("", false)
+                binding.recipientSpinner.isEnabled = false
+                binding.encryptButton.isEnabled = false
+                showError("All contacts have invalid public keys. Please re-import them.")
+            } else {
+                val contactNames = validContacts.map { it.name }
+                val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, contactNames)
+                binding.recipientSpinner.setAdapter(adapter)
+                binding.recipientLayout.hint = "Select recipient"
+                binding.recipientSpinner.isEnabled = true
+                
+                binding.recipientSpinner.setOnItemClickListener { _, _, position, _ ->
+                    selectedContact = validContacts[position]
+                    // Store the selected contact to prevent timeout issues
+                    binding.recipientSpinner.tag = selectedContact
+                }
             }
         }
     }
     
     private fun loadUserKeyPair() {
-        // Load user's key pair from persistent storage
-        val keyPairData = dataManager.loadKeyPair()
-        if (keyPairData != null) {
+        // Load user's key pair from Android Keystore
+        val keyPair = dataManager.loadKeyPair()
+        if (keyPair != null) {
             try {
-                userPrivateKey = cryptoManager.importPrivateKey(keyPairData.privateKeyString)
+                // SECURITY: Private key is accessed directly from KeyPair object
+                // No serialization or string conversion
+                userPrivateKey = keyPair.private
             } catch (e: Exception) {
                 showError("Failed to load user key pair: ${e.message}")
             }
@@ -203,6 +236,13 @@ class ComposeMessageActivity : AppCompatActivity() {
             return
         }
         
+        // Validate recipient contact before using it
+        if (!recipient.isValid()) {
+            val validationResult = recipient.getValidationResult()
+            showError("Invalid recipient contact: ${validationResult.message}")
+            return
+        }
+        
         if (privateKey == null) {
             showError("User key pair not available. Please generate keys first.")
             return
@@ -222,7 +262,7 @@ class ComposeMessageActivity : AppCompatActivity() {
         binding.encryptButton.isEnabled = false
         
         try {
-            // Import recipient's public key
+            // Import recipient's public key (already validated above)
             val publicKey = cryptoManager.importPublicKey(recipient.publicKeyString)
             
             // Create signed encrypted message
@@ -237,17 +277,15 @@ class ComposeMessageActivity : AppCompatActivity() {
                 displayQRCode()
                 showSuccess("Message encrypted and signed successfully")
                 
-                // Save message to conversation history
+                // Save message to conversation history with cryptographic signature
                 val userName = dataManager.getUserName()
-                val savedMessage = Message(
-                    id = java.util.UUID.randomUUID().toString(),
-                    senderName = userName,
-                    recipientName = recipient.name,
-                    content = message,
-                    timestamp = System.currentTimeMillis(),
-                    isOutgoing = true
-                )
-                dataManager.addMessage(savedMessage)
+                val secureMessage = dataManager.createSignedMessage(message, recipient.name, userName)
+                
+                if (secureMessage != null) {
+                    dataManager.addMessage(secureMessage)
+                } else {
+                    showError("Failed to sign message for storage")
+                }
                 
             } else {
                 showError("Failed to generate QR code")

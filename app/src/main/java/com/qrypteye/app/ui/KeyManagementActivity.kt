@@ -11,7 +11,6 @@ import com.google.android.material.snackbar.Snackbar
 import com.qrypteye.app.R
 import com.qrypteye.app.crypto.CryptoManager
 import com.qrypteye.app.data.DataManager
-import com.qrypteye.app.data.KeyPairData
 import com.qrypteye.app.databinding.ActivityKeyManagementBinding
 import com.qrypteye.app.qr.QRCodeManager
 import java.io.File
@@ -24,7 +23,7 @@ class KeyManagementActivity : AppCompatActivity() {
     private lateinit var qrCodeManager: QRCodeManager
     private lateinit var dataManager: DataManager
     
-    private var keyPairData: KeyPairData? = null
+    private var keyPair: java.security.KeyPair? = null
     private var publicKeyQRBitmap: Bitmap? = null
     
     companion object {
@@ -54,7 +53,7 @@ class KeyManagementActivity : AppCompatActivity() {
         }
         
         binding.generateKeypairButton.setOnClickListener {
-            if (keyPairData != null) {
+            if (keyPair != null) {
                 showReplaceKeyPairDialog()
             } else {
                 generateNewKeyPair()
@@ -98,16 +97,34 @@ class KeyManagementActivity : AppCompatActivity() {
     }
     
     private fun loadExistingKeyPair() {
-        keyPairData = dataManager.loadKeyPair()
-        if (keyPairData != null) {
-            displayPublicKey()
-            binding.generateKeypairButton.text = "Generate New Keypair"
-            binding.keyStatusText.text = "Key pair loaded"
-            binding.keyStatusText.setTextColor(getColor(R.color.success))
-        } else {
+        try {
+            val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
+            val cryptoManager = com.qrypteye.app.crypto.CryptoManager()
+            
+            if (secureDataManager.hasKeyPair()) {
+                val loadedKeyPair = secureDataManager.loadKeyPair()
+                if (loadedKeyPair != null) {
+                    // Store the KeyPair object directly (no serialization)
+                    keyPair = loadedKeyPair
+                    
+                    displayPublicKey()
+                    binding.generateKeypairButton.text = "Generate New Keypair"
+                    binding.keyStatusText.text = "Key pair loaded from Android Keystore"
+                    binding.keyStatusText.setTextColor(getColor(R.color.success))
+                } else {
+                    binding.generateKeypairButton.text = "Generate Keypair"
+                    binding.keyStatusText.text = "Failed to load key pair"
+                    binding.keyStatusText.setTextColor(getColor(R.color.error))
+                }
+            } else {
+                binding.generateKeypairButton.text = "Generate Keypair"
+                binding.keyStatusText.text = "No key pair found"
+                binding.keyStatusText.setTextColor(getColor(R.color.warning))
+            }
+        } catch (e: Exception) {
             binding.generateKeypairButton.text = "Generate Keypair"
-            binding.keyStatusText.text = "No key pair found"
-            binding.keyStatusText.setTextColor(getColor(R.color.warning))
+            binding.keyStatusText.text = "Error loading key pair"
+            binding.keyStatusText.setTextColor(getColor(R.color.error))
         }
     }
     
@@ -116,17 +133,29 @@ class KeyManagementActivity : AppCompatActivity() {
             binding.generateKeypairButton.isEnabled = false
             binding.generateKeypairButton.text = "Generating..."
             
-            // Generate new key pair
-            val keyPair = cryptoManager.generateKeyPair()
-            keyPairData = KeyPairData.create(keyPair)
+            // SECURITY: Generate key pair directly in Android Keystore
+            // This ensures private keys never leave the secure hardware environment
+            val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
+            val cryptoManager = com.qrypteye.app.crypto.CryptoManager()
             
-            // Save to persistent storage
-            dataManager.saveKeyPair(keyPairData!!)
+            // Generate a new key pair within Android Keystore
+            val keyPair = cryptoManager.generateKeyPair()
+            secureDataManager.saveKeyPair(keyPair)
+            
+            // Log key generation event
+            if (this.keyPair != null) {
+                secureDataManager.logKeyRotation()
+            } else {
+                secureDataManager.logKeyGeneration()
+            }
+            
+            // Create KeyPairData for display (without private key)
+            this.keyPair = keyPair
             
             // Display public key
             displayPublicKey()
             
-            showSuccess("Keypair generated and saved successfully")
+            showSuccess("Keypair generated and saved securely in Android Keystore")
             
         } catch (e: Exception) {
             showError("Failed to generate keypair: ${e.message}")
@@ -137,8 +166,8 @@ class KeyManagementActivity : AppCompatActivity() {
     }
     
     private fun displayPublicKey() {
-        keyPairData?.let { keyData ->
-            binding.publicKeyText.text = keyData.publicKeyString
+        keyPair?.let { keyData ->
+            binding.publicKeyText.text = cryptoManager.exportPublicKey(keyData.public)
             binding.publicKeyCard.visibility = View.VISIBLE
             binding.keyStatusText.text = "Key pair loaded"
             binding.keyStatusText.setTextColor(getColor(R.color.success))
@@ -146,11 +175,11 @@ class KeyManagementActivity : AppCompatActivity() {
     }
     
     private fun exportPublicKey() {
-        keyPairData?.let { keyData ->
+        keyPair?.let { keyData ->
             try {
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, keyData.publicKeyString)
+                    putExtra(Intent.EXTRA_TEXT, cryptoManager.exportPublicKey(keyData.public))
                     putExtra(Intent.EXTRA_SUBJECT, "QRyptEye Public Key")
                 }
                 
@@ -162,7 +191,7 @@ class KeyManagementActivity : AppCompatActivity() {
     }
     
     private fun sharePublicKeyQR() {
-        keyPairData?.let { keyData ->
+        keyPair?.let { keyData ->
             try {
                 val userName = dataManager.getUserName()
                 if (userName.isEmpty()) {
@@ -172,7 +201,7 @@ class KeyManagementActivity : AppCompatActivity() {
                 
                 // Generate QR code for public key
                 publicKeyQRBitmap = qrCodeManager.generateQRCodeForPublicKey(
-                    keyData.publicKeyString,
+                    cryptoManager.exportPublicKey(keyData.public),
                     userName
                 )
                 

@@ -157,10 +157,29 @@ class ConversationsActivity : AppCompatActivity() {
             return
         }
         
+        // Filter out invalid contacts and log them for debugging
+        val validContacts = contacts.filter { contact ->
+            if (contact.isValid()) {
+                true
+            } else {
+                // Log invalid contact but don't show error to user (might be noisy)
+                val validationResult = contact.getValidationResult()
+                android.util.Log.w("ConversationsActivity", 
+                    "Invalid contact '${contact.name}': ${validationResult.message}")
+                false
+            }
+        }
+        
+        if (validContacts.isEmpty()) {
+            binding.emptyStateCard.visibility = View.VISIBLE
+            binding.conversationsRecyclerView.visibility = View.GONE
+            return
+        }
+        
         // Group messages by contact and get the latest message for each
         val conversations = mutableListOf<ConversationItem>()
         
-        for (contact in contacts) {
+        for (contact in validContacts) {
             val contactMessages = messages.filter { 
                 it.senderName == contact.name || it.recipientName == contact.name 
             }

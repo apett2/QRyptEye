@@ -123,7 +123,7 @@ com.qrypteye.app/
 ### Key Components
 - **CryptoManager**: Handles encryption, decryption, and key management
 - **QRCodeManager**: Manages QR code generation and parsing
-- **Data Models**: Contact, Message, and KeyPairData classes
+- **Data Models**: Contact, Message, and SecureMessage classes
 - **UI Activities**: ComposeMessage, ScanQR, and KeyManagement activities
 
 ## 🔒 Security Considerations
@@ -134,6 +134,100 @@ com.qrypteye.app/
 3. **Verify QR codes visually before scanning**
 4. **Use strong, unique passwords for device protection**
 5. **Regularly update the app for security patches**
+
+### Cryptographic Security
+- **Key Generation**: All cryptographic keys are generated using cryptographically secure random number generators (SecureRandom)
+- **Key Derivation**: The app does NOT support password-derived keys. If you ever need to implement password-based key derivation:
+  - Use PBKDF2 with at least 100,000 iterations
+  - Use scrypt with N=16384, r=8, p=1 minimum
+  - Use Argon2 with appropriate parameters
+  - Always use a salt of at least 16 bytes
+  - Never use weak entropy sources (Math.random(), timestamps, etc.)
+- **Algorithm Security**: Uses RSA-2048 with OAEP padding and AES-256-GCM for authenticated encryption
+- **Secure Storage**: All sensitive data is stored using EncryptedSharedPreferences:
+  - Private keys encrypted with AES-256-GCM
+  - All data encrypted with AES-256-GCM
+  - Master key protected by Android Keystore
+  - No plaintext storage of sensitive information
+  - Automatic migration from legacy storage
+- **Encryption at Rest**: Field-level encryption for sensitive data:
+  - Message content encrypted with AES-256-GCM
+  - Contact names encrypted with AES-256-GCM
+  - User names encrypted with AES-256-GCM
+  - Cryptographic signatures remain unencrypted for verification
+  - Public keys remain unencrypted for functionality
+  - Protection against file system access attacks
+- **Android Keystore Integration**: Private keys are generated and stored within Android Keystore:
+  - Private keys never leave the secure hardware environment
+  - Hardware-backed security on supported devices
+  - No serialization or export of private keys
+  - Protection against key extraction attacks
+  - Key aliases for secure reference
+  - **CRITICAL SECURITY FIX**: Removed KeyPairData class that contained privateKeyString field
+  - Private keys are now accessed directly from KeyPair objects without serialization
+  - Complete elimination of private key string storage vulnerability
+  - **Proper Android Keystore Usage**: Keys generated using KeyPairGenerator.getInstance("RSA", "AndroidKeyStore")
+  - **Secure Key Access**: Private keys accessed only by alias via keyStore.getKey(keyAlias, null)
+  - **No Key Export**: Private keys never serialized, exported, or converted to strings
+  - **Hardware-backed Security**: Leverages device's secure hardware when available
+- **Message Integrity and Authenticity**: All messages are cryptographically signed:
+  - RSA-2048 signatures with SHA-256 for message authenticity
+  - Unique message IDs to prevent replay attacks
+  - Timestamp validation for message freshness
+  - Sender verification through public key validation
+  - Tamper detection through signature verification
+  - No reliance on weak heuristics for duplicate detection
+  - **Enhanced Signature Format**:
+    - Canonical JSON serialization for unambiguous parsing
+    - All message fields signed (id, sender, recipient, content, timestamp, direction, read status)
+    - Signature context to prevent signature reuse attacks
+    - Versioned signature format for future compatibility
+    - Protection against field injection and tampering
+- **Replay Attack Protection**: Messages and public keys are validated for freshness:
+  - Messages older than 24 hours are rejected
+  - Messages from the future (beyond 5 minutes clock skew) are rejected
+  - Public key QR codes are also validated for freshness
+  - Prevents replay attacks where old messages are re-sent
+  - **Enhanced Replay Protection System**:
+    - Tracks previously seen message IDs to prevent exact duplicates
+    - Tracks message content hashes to prevent content-based replays
+    - **NEW**: Tracks session nonces to prevent nonce reuse attacks
+    - Uses SHA-256 hashing for secure message fingerprinting
+    - Thread-safe concurrent access for high-performance protection
+    - Automatic cleanup of old entries to prevent memory exhaustion
+    - Protection against memory exhaustion attacks (max 10,000 tracked messages)
+    - Rejects messages with duplicate IDs, content hashes, or session nonces
+    - **Enhanced with Session Nonces**: Each message includes a unique 96-bit session nonce
+    - **Multi-layered Protection**: ID-based, content-based, and nonce-based replay detection
+  - **Timestamp Regression Protection**:
+    - Tracks latest timestamp per sender to prevent regression attacks
+    - Rejects messages with timestamps earlier than previously seen from same sender
+    - Validates clock drift (2 minutes maximum allowed)
+    - Uses sender public key hash for secure identification
+    - Automatic cleanup of old sender entries (7 days)
+    - Protection against timestamp manipulation and replay attacks
+
+### Security Logging and Auditing
+- **Comprehensive Security Logging**: All cryptographic operations are logged for audit purposes:
+  - Message verification success/failure events
+  - Replay attack detection events
+  - Timestamp regression detection events
+  - Invalid signature events
+  - Key generation and rotation events
+  - Encryption and decryption success/failure events
+  - Clock drift detection events
+- **Secure Logging Practices**:
+  - No sensitive data (private keys, message content) logged
+  - Uses secure hashing for message and sender identification
+  - Categorized event types for easy analysis
+  - Thread-safe logging with size limits to prevent exhaustion
+  - Automatic cleanup of old log entries
+- **User Feedback and Transparency**:
+  - Users can see when message verification fails vs silent drops
+  - Key rotation and generation events are logged and visible
+  - Security statistics available for user awareness
+  - Recent security events accessible for debugging
+  - Clear distinction between different types of security failures
 
 ### Limitations
 - **QR Code Size**: Large messages may require multiple QR codes (426 character max per QR code)

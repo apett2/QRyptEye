@@ -67,6 +67,9 @@ dependencies {
     implementation 'org.bouncycastle:bcprov-jdk18on:1.77'
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.77'
     
+    // Jetpack Security for encrypted storage
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    
     // JSON handling
     implementation 'com.google.code.gson:gson:2.10.1'
     
