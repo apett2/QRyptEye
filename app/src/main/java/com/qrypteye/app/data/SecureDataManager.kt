@@ -487,17 +487,38 @@ class SecureDataManager(private val context: Context) {
     
     // User settings (encrypted storage)
     fun saveUserName(name: String) {
-        val encryptedName = encryptFieldWithIntegrity(name, "user_settings", "user", System.currentTimeMillis())
-        securePrefs.edit().putString(KEY_USER_NAME, encryptedName).apply()
+        val timestamp = System.currentTimeMillis()
+        val encryptedName = encryptFieldWithIntegrity(name, "user_settings", "user", timestamp)
+        
+        // Store both the encrypted name and the timestamp
+        val userNameData = mapOf(
+            "encryptedName" to encryptedName,
+            "timestamp" to timestamp
+        )
+        val json = gson.toJson(userNameData)
+        securePrefs.edit().putString(KEY_USER_NAME, json).apply()
     }
     
     fun getUserName(): String {
-        val encryptedName = securePrefs.getString(KEY_USER_NAME, "")
-        return if (encryptedName != null && encryptedName.isNotEmpty()) {
+        val json = securePrefs.getString(KEY_USER_NAME, "")
+        return if (json != null && json.isNotEmpty()) {
             try {
-                decryptFieldWithIntegrity(encryptedName, "user_settings", "user", System.currentTimeMillis())
+                val userNameData = gson.fromJson(json, Map::class.java)
+                val encryptedName = userNameData["encryptedName"] as? String
+                val timestamp = (userNameData["timestamp"] as? Number)?.toLong()
+                
+                if (encryptedName != null && timestamp != null) {
+                    decryptFieldWithIntegrity(encryptedName, "user_settings", "user", timestamp)
+                } else {
+                    ""
+                }
             } catch (e: Exception) {
-                ""
+                // Fallback for legacy format (before timestamp was stored)
+                try {
+                    decryptFieldWithIntegrity(json, "user_settings", "user", System.currentTimeMillis())
+                } catch (e2: Exception) {
+                    ""
+                }
             }
         } else {
             ""
