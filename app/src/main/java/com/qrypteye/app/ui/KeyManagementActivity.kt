@@ -154,26 +154,24 @@ class KeyManagementActivity : AppCompatActivity() {
             // SECURITY: Generate key pair directly in Android Keystore
             // This ensures private keys never leave the secure hardware environment
             val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
-            val cryptoManager = com.qrypteye.app.crypto.CryptoManager()
             
             // Generate a new key pair within Android Keystore
-            val keyPair = cryptoManager.generateKeyPair()
-            secureDataManager.saveKeyPair(keyPair)
+            this.keyPair = secureDataManager.generateKeyPair()
             
             // Log key generation event
             if (this.keyPair != null) {
-                secureDataManager.logKeyRotation()
+                if (secureDataManager.hasKeyPair()) {
+                    secureDataManager.logKeyRotation()
+                } else {
+                    secureDataManager.logKeyGeneration()
+                }
+                
+                // Display public key
+                displayPublicKey()
+                showSuccess("Keypair generated and saved securely in Android Keystore")
             } else {
-                secureDataManager.logKeyGeneration()
+                showError("Failed to generate key pair")
             }
-            
-            // Create KeyPairData for display (without private key)
-            this.keyPair = keyPair
-            
-            // Display public key
-            displayPublicKey()
-            
-            showSuccess("Keypair generated and saved securely in Android Keystore")
             
         } catch (e: Exception) {
             showError("Failed to generate keypair: ${e.message}")

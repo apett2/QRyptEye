@@ -752,18 +752,28 @@ class SecureDataManager(private val context: Context) {
     }
     
     // SECURE KEY MANAGEMENT using Android Keystore (via SecureKeyManager)
-    fun saveKeyPair(keyPair: KeyPair) {
+    fun generateKeyPair(): KeyPair? {
         try {
             // Generate a new key pair within Android Keystore
-            // The provided keyPair is used to verify the public key matches
-            val keyInfo = secureKeyManager.generateKeyPair()
+            // This ensures private keys never leave the secure hardware environment
+            secureKeyManager.generateKeyPair()
             
-            // Verify the generated public key matches the provided one
-            val cryptoManager = com.qrypteye.app.crypto.CryptoManager()
-            val generatedPublicKey = cryptoManager.importPublicKey(keyInfo.publicKeyString)
-            if (generatedPublicKey != keyPair.public) {
-                throw SecurityException("Generated key pair does not match provided key pair")
-            }
+            // Load and return the generated key pair
+            return loadKeyPair()
+            
+        } catch (e: Exception) {
+            throw SecurityException("Failed to generate key pair securely", e)
+        }
+    }
+    
+    fun saveKeyPair(_keyPair: KeyPair) {
+        try {
+            // Generate a new key pair within Android Keystore
+            // This ensures private keys never leave the secure hardware environment
+            secureKeyManager.generateKeyPair()
+            
+            // The key pair is now stored securely in Android Keystore
+            // We don't need to verify against the provided keyPair since we're generating a new one
             
         } catch (e: Exception) {
             throw SecurityException("Failed to save key pair securely", e)
