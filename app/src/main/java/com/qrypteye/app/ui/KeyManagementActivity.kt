@@ -245,16 +245,13 @@ class KeyManagementActivity : AppCompatActivity() {
     
     private fun importPublicKey(scannedData: String) {
         try {
-            // Try to parse the scanned data as a contact
-            // The scanned data should be in JSON format with name and publicKeyString
-            val gson = com.google.gson.Gson()
-            val contactData = gson.fromJson(scannedData, Map::class.java)
-            
-            val name = contactData["name"] as? String
-            val publicKeyString = contactData["publicKeyString"] as? String
-            
-            if (name != null && publicKeyString != null) {
-                val contact = com.qrypteye.app.data.Contact.createContactFromString(name, publicKeyString)
+            // Try to parse the scanned data as a contact using QRCodeManager
+            val publicKeyData = qrCodeManager.parsePublicKeyData(scannedData)
+            if (publicKeyData != null) {
+                val contact = com.qrypteye.app.data.Contact.createContactFromString(
+                    publicKeyData.contactName, 
+                    publicKeyData.publicKey
+                )
                 
                 // Save the contact
                 val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
@@ -262,7 +259,28 @@ class KeyManagementActivity : AppCompatActivity() {
                 
                 showSuccess("Successfully imported public key for ${contact.name}")
             } else {
-                showError("Invalid QR code format. Expected contact information with name and publicKeyString.")
+                // Fallback: Try to parse as legacy format
+                try {
+                    val gson = com.google.gson.Gson()
+                    val contactData = gson.fromJson(scannedData, Map::class.java)
+                    
+                    val name = contactData["name"] as? String
+                    val publicKeyString = contactData["publicKeyString"] as? String
+                    
+                    if (name != null && publicKeyString != null) {
+                        val contact = com.qrypteye.app.data.Contact.createContactFromString(name, publicKeyString)
+                        
+                        // Save the contact
+                        val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
+                        secureDataManager.addContact(contact)
+                        
+                        showSuccess("Successfully imported public key for ${contact.name}")
+                    } else {
+                        showError("Invalid QR code format. Expected contact information with name and publicKeyString.")
+                    }
+                } catch (e: Exception) {
+                    showError("Invalid QR code format. Could not parse contact information.")
+                }
             }
         } catch (e: Exception) {
             showError("Error importing public key: ${e.message}")
