@@ -18,7 +18,7 @@ data class Message(
         private fun generateSecureId(): String {
             val bytes = ByteArray(16)
             secureRandom.nextBytes(bytes)
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+            return android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING)
         }
     }
     

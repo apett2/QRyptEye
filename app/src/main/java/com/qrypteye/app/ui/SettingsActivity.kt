@@ -29,7 +29,7 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun setupUI() {
         binding.toolbar.setNavigationOnClickListener {
-            onBackPressed()
+            finish()
         }
         
         binding.saveButton.setOnClickListener {

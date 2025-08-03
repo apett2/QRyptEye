@@ -73,7 +73,7 @@ object ContactValidator {
      */
     fun isValidBase64UrlSafe(encodedString: String): Boolean {
         return try {
-            Base64.getUrlDecoder().decode(encodedString)
+            android.util.Base64.decode(encodedString, android.util.Base64.URL_SAFE)
             true
         } catch (e: IllegalArgumentException) {
             false
@@ -85,7 +85,7 @@ object ContactValidator {
      * @throws IllegalArgumentException if the string is not a valid public key
      */
     fun decodePublicKey(publicKeyString: String): PublicKey {
-        val keyBytes = Base64.getUrlDecoder().decode(publicKeyString)
+        val keyBytes = android.util.Base64.decode(publicKeyString, android.util.Base64.URL_SAFE)
         val keySpec = X509EncodedKeySpec(keyBytes)
         val keyFactory = KeyFactory.getInstance(EXPECTED_ALGORITHM)
         return keyFactory.generatePublic(keySpec)
@@ -94,8 +94,8 @@ object ContactValidator {
     /**
      * Encodes a PublicKey to Base64 URL-safe string format
      */
-    fun encodePublicKey(publicKey: PublicKey): String {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(publicKey.encoded)
+    fun encodePublicKey(publicKey: java.security.PublicKey): String {
+        return android.util.Base64.encodeToString(publicKey.encoded, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING)
     }
     
     /**

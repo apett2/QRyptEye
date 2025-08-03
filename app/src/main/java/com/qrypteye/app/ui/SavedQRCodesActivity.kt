@@ -32,7 +32,7 @@ class SavedQRCodesActivity : AppCompatActivity() {
     
     private fun setupUI() {
         binding.toolbar.setNavigationOnClickListener {
-            onBackPressed()
+            finish()
         }
         
         // Setup RecyclerView

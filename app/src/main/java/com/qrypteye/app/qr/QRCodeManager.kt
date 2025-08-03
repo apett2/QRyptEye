@@ -57,7 +57,6 @@ class QRCodeManager {
      * Calculate actual QR code capacity for a given message
      */
     fun calculateQRCodeCapacity(messageLength: Int): QRCodeCapacity {
-        val messageBytes = messageLength
         val jsonSize = estimateJsonSize(messageLength)
         
         return QRCodeCapacity(

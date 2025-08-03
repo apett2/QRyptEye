@@ -27,7 +27,16 @@ class AirGapChecker(private val context: Context) {
         }
         
         // Check Bluetooth
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        val bluetoothAdapter = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR2) {
+            // Use modern API for Android 4.3+ (API 18+)
+            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
+            bluetoothManager.adapter
+        } else {
+            // Fallback for older versions
+            @Suppress("DEPRECATION")
+            BluetoothAdapter.getDefaultAdapter()
+        }
+        
         if (bluetoothAdapter != null && bluetoothAdapter.isEnabled) {
             enabledFeatures.add("Bluetooth")
         }

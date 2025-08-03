@@ -38,7 +38,7 @@ class ConversationDetailActivity : AppCompatActivity() {
     
     private fun setupUI() {
         binding.toolbar.setNavigationOnClickListener {
-            onBackPressed()
+            finish()
         }
         
         binding.composeButton.setOnClickListener {
@@ -104,7 +104,6 @@ class ConversationDetailActivity : AppCompatActivity() {
             androidx.recyclerview.widget.RecyclerView.ViewHolder(binding.root) {
             
             fun bind(message: Message) {
-                val userName = dataManager.getUserName()
                 val isOutgoing = message.isOutgoing
                 
                 binding.messageText.text = message.content

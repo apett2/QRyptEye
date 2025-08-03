@@ -18,17 +18,36 @@ import java.io.FileOutputStream
 
 class KeyManagementActivity : AppCompatActivity() {
     
-    private lateinit var binding: ActivityKeyManagementBinding
-    private lateinit var cryptoManager: CryptoManager
-    private lateinit var qrCodeManager: QRCodeManager
-    private lateinit var dataManager: DataManager
-    
-    private var keyPair: java.security.KeyPair? = null
-    private var publicKeyQRBitmap: Bitmap? = null
-    
     companion object {
         private const val REQUEST_SCAN_QR = 1001
         private const val REQUEST_SETTINGS = 1002
+    }
+    
+    private lateinit var binding: ActivityKeyManagementBinding
+    private var keyPair: java.security.KeyPair? = null
+    private lateinit var cryptoManager: com.qrypteye.app.crypto.CryptoManager
+    private lateinit var qrCodeManager: com.qrypteye.app.qr.QRCodeManager
+    private lateinit var dataManager: com.qrypteye.app.data.DataManager
+    private var publicKeyQRBitmap: android.graphics.Bitmap? = null
+    
+    // Modern Activity Result API
+    private val scanQrLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val data = result.data
+            val scannedData = data?.getStringExtra("scanned_data")
+            if (!scannedData.isNullOrEmpty()) {
+                importPublicKey(scannedData)
+            }
+        }
+    }
+    
+    private val settingsLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        // Handle settings result if needed
+        loadExistingKeyPair()
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,9 +55,9 @@ class KeyManagementActivity : AppCompatActivity() {
         binding = ActivityKeyManagementBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
-        cryptoManager = CryptoManager()
-        qrCodeManager = QRCodeManager()
-        dataManager = DataManager(this)
+        cryptoManager = com.qrypteye.app.crypto.CryptoManager()
+        qrCodeManager = com.qrypteye.app.qr.QRCodeManager()
+        dataManager = com.qrypteye.app.data.DataManager(this)
         
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -49,7 +68,7 @@ class KeyManagementActivity : AppCompatActivity() {
     
     private fun setupUI() {
         binding.toolbar.setNavigationOnClickListener {
-            onBackPressed()
+            finish()
         }
         
         binding.generateKeypairButton.setOnClickListener {
@@ -72,12 +91,12 @@ class KeyManagementActivity : AppCompatActivity() {
             // Launch QR scanner to import public key
             val intent = Intent(this, ScanQRActivity::class.java)
             intent.putExtra("import_mode", true)
-            startActivityForResult(intent, REQUEST_SCAN_QR)
+            scanQrLauncher.launch(intent)
         }
         
         binding.settingsButton.setOnClickListener {
             val intent = Intent(this, SettingsActivity::class.java)
-            startActivityForResult(intent, REQUEST_SETTINGS)
+            settingsLauncher.launch(intent)
         }
         
         binding.closeQrButton.setOnClickListener {
@@ -99,7 +118,6 @@ class KeyManagementActivity : AppCompatActivity() {
     private fun loadExistingKeyPair() {
         try {
             val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
-            val cryptoManager = com.qrypteye.app.crypto.CryptoManager()
             
             if (secureDataManager.hasKeyPair()) {
                 val loadedKeyPair = secureDataManager.loadKeyPair()
@@ -227,18 +245,29 @@ class KeyManagementActivity : AppCompatActivity() {
         binding.publicKeyQrCard.visibility = View.GONE
     }
     
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        
-        if (requestCode == REQUEST_SCAN_QR && resultCode == RESULT_OK) {
-            // Handle successful QR scan for importing public key
-            val contactName = data?.getStringExtra("contact_name")
-            if (contactName != null) {
-                showSuccess("Successfully imported public key for $contactName")
+    private fun importPublicKey(scannedData: String) {
+        try {
+            // Try to parse the scanned data as a contact
+            // The scanned data should be in JSON format with name and publicKeyString
+            val gson = com.google.gson.Gson()
+            val contactData = gson.fromJson(scannedData, Map::class.java)
+            
+            val name = contactData["name"] as? String
+            val publicKeyString = contactData["publicKeyString"] as? String
+            
+            if (name != null && publicKeyString != null) {
+                val contact = com.qrypteye.app.data.Contact.createContactFromString(name, publicKeyString)
+                
+                // Save the contact
+                val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
+                secureDataManager.addContact(contact)
+                
+                showSuccess("Successfully imported public key for ${contact.name}")
+            } else {
+                showError("Invalid QR code format. Expected contact information with name and publicKeyString.")
             }
-        } else if (requestCode == REQUEST_SETTINGS && resultCode == RESULT_OK) {
-            // Settings were updated, refresh the UI if needed
-            showSuccess("Settings updated successfully")
+        } catch (e: Exception) {
+            showError("Error importing public key: ${e.message}")
         }
     }
     

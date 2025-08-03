@@ -138,9 +138,19 @@ class QRCodeFullScreenActivity : AppCompatActivity() {
     
     private fun hideSystemUI() {
         // Hide the status bar and navigation bar
-        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Use modern API for Android 11+ (API 30+)
+            window.insetsController?.let { controller ->
+                controller.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            // Fallback for older versions
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+        }
     }
     
     private fun showSuccess(message: String) {
