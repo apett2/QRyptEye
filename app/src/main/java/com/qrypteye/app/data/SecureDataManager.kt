@@ -141,15 +141,17 @@ class SecureDataManager(private val context: Context) {
     private fun generateMetadataSigningKey(keyAlias: String) {
         val keyGenParameterSpec = android.security.keystore.KeyGenParameterSpec.Builder(
             keyAlias,
-            android.security.keystore.KeyProperties.PURPOSE_SIGN or android.security.keystore.KeyProperties.PURPOSE_VERIFY
+            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
         ).apply {
             setKeySize(256)
-            setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256)
+            setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+            setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
             setUserAuthenticationRequired(false)
+            setRandomizedEncryptionRequired(true)
         }.build()
         
         val keyGenerator = javax.crypto.KeyGenerator.getInstance(
-            android.security.keystore.KeyProperties.KEY_ALGORITHM_HMAC_SHA256,
+            android.security.keystore.KeyProperties.KEY_ALGORITHM_AES,
             "AndroidKeyStore"
         )
         keyGenerator.init(keyGenParameterSpec)
@@ -215,7 +217,14 @@ class SecureDataManager(private val context: Context) {
      */
     private fun signMetadata(metadata: String): String {
         val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        val secretKeySpec = javax.crypto.spec.SecretKeySpec(metadataSigningKey.encoded, "HmacSHA256")
+        
+        // Extract key material from Android Keystore key for HMAC
+        val keyMaterial = metadataSigningKey.encoded
+        if (keyMaterial == null || keyMaterial.isEmpty()) {
+            throw SecurityException("Metadata signing key has no encoded material")
+        }
+        
+        val secretKeySpec = javax.crypto.spec.SecretKeySpec(keyMaterial, "HmacSHA256")
         mac.init(secretKeySpec)
         
         val signatureBytes = mac.doFinal(metadata.toByteArray())

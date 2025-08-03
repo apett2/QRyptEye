@@ -245,13 +245,21 @@ class KeyManagementActivity : AppCompatActivity() {
     
     private fun importPublicKey(scannedData: String) {
         try {
+            android.util.Log.d("KeyManagementActivity", "Starting importPublicKey with data length: ${scannedData.length}")
+            
             // Try to parse the scanned data as a contact using QRCodeManager
             val publicKeyData = qrCodeManager.parsePublicKeyData(scannedData)
+            android.util.Log.d("KeyManagementActivity", "parsePublicKeyData result: ${publicKeyData != null}")
+            
             if (publicKeyData != null) {
+                android.util.Log.d("KeyManagementActivity", "Public key data - contactName: ${publicKeyData.contactName}, publicKey length: ${publicKeyData.publicKey.length}")
+                
                 val contact = com.qrypteye.app.data.Contact.createContactFromString(
                     publicKeyData.contactName, 
                     publicKeyData.publicKey
                 )
+                
+                android.util.Log.d("KeyManagementActivity", "Contact created successfully, adding to secure data manager")
                 
                 // Save the contact
                 val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
@@ -259,6 +267,8 @@ class KeyManagementActivity : AppCompatActivity() {
                 
                 showSuccess("Successfully imported public key for ${contact.name}")
             } else {
+                android.util.Log.d("KeyManagementActivity", "parsePublicKeyData returned null, trying legacy format")
+                
                 // Fallback: Try to parse as legacy format
                 try {
                     val gson = com.google.gson.Gson()
@@ -267,8 +277,12 @@ class KeyManagementActivity : AppCompatActivity() {
                     val name = contactData["name"] as? String
                     val publicKeyString = contactData["publicKeyString"] as? String
                     
+                    android.util.Log.d("KeyManagementActivity", "Legacy format - name: $name, publicKeyString length: ${publicKeyString?.length}")
+                    
                     if (name != null && publicKeyString != null) {
                         val contact = com.qrypteye.app.data.Contact.createContactFromString(name, publicKeyString)
+                        
+                        android.util.Log.d("KeyManagementActivity", "Legacy contact created successfully, adding to secure data manager")
                         
                         // Save the contact
                         val secureDataManager = com.qrypteye.app.data.SecureDataManager(this)
@@ -276,13 +290,16 @@ class KeyManagementActivity : AppCompatActivity() {
                         
                         showSuccess("Successfully imported public key for ${contact.name}")
                     } else {
+                        android.util.Log.e("KeyManagementActivity", "Legacy format missing required fields")
                         showError("Invalid QR code format. Expected contact information with name and publicKeyString.")
                     }
                 } catch (e: Exception) {
+                    android.util.Log.e("KeyManagementActivity", "Legacy format parsing failed: ${e.message}")
                     showError("Invalid QR code format. Could not parse contact information.")
                 }
             }
         } catch (e: Exception) {
+            android.util.Log.e("KeyManagementActivity", "importPublicKey exception: ${e.message}", e)
             showError("Error importing public key: ${e.message}")
         }
     }

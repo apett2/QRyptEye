@@ -342,8 +342,14 @@ class ScanQRActivity : AppCompatActivity() {
     
     private fun importPublicKey(qrContent: String) {
         try {
+            android.util.Log.d("ScanQRActivity", "Starting importPublicKey with content length: ${qrContent.length}")
+            
             val publicKeyData = qrCodeManager.parsePublicKeyData(qrContent)
+            android.util.Log.d("ScanQRActivity", "parsePublicKeyData result: ${publicKeyData != null}")
+            
             if (publicKeyData != null) {
+                android.util.Log.d("ScanQRActivity", "Public key data - contactName: ${publicKeyData.contactName}, publicKey length: ${publicKeyData.publicKey.length}")
+                
                 // SECURITY: Check for replay attacks on public key import
                 val currentTime = System.currentTimeMillis()
                 val maxAge = 24 * 60 * 60 * 1000L // 24 hours
@@ -363,15 +369,18 @@ class ScanQRActivity : AppCompatActivity() {
                 
                 // Create contact from public key data with comprehensive validation
                 val contact = try {
+                    android.util.Log.d("ScanQRActivity", "Creating contact with name: ${publicKeyData.contactName}")
                     Contact.createContactFromString(
                         name = publicKeyData.contactName,
                         publicKeyString = publicKeyData.publicKey
                     )
                 } catch (e: IllegalArgumentException) {
+                    android.util.Log.e("ScanQRActivity", "Contact creation failed: ${e.message}")
                     // Attempt to repair the key if initial validation fails
                     val repairResult = ContactValidator.attemptKeyRepair(publicKeyData.publicKey)
                     if (repairResult is ContactValidator.RepairResult.Repaired) {
                         try {
+                            android.util.Log.d("ScanQRActivity", "Attempting key repair with ${repairResult.encodingUsed}")
                             Contact.createContactFromString(
                                 name = publicKeyData.contactName,
                                 publicKeyString = repairResult.repairedKey
@@ -379,16 +388,20 @@ class ScanQRActivity : AppCompatActivity() {
                                 showSuccess("Public key repaired using ${repairResult.encodingUsed} encoding")
                             }
                         } catch (e2: IllegalArgumentException) {
+                            android.util.Log.e("ScanQRActivity", "Key repair failed: ${e2.message}")
                             showError("Invalid public key format: ${e2.message}")
                             isProcessingQR = false
                             return
                         }
                     } else {
+                        android.util.Log.e("ScanQRActivity", "Key repair not possible: ${repairResult.message}")
                         showError("Invalid public key format: ${e.message}")
                         isProcessingQR = false
                         return
                     }
                 }
+                
+                android.util.Log.d("ScanQRActivity", "Contact created successfully, adding to data manager")
                 
                 // Save contact to persistent storage
                 dataManager.addContact(contact)
@@ -412,9 +425,11 @@ class ScanQRActivity : AppCompatActivity() {
                 }, 2000)
                 
             } else {
+                android.util.Log.e("ScanQRActivity", "parsePublicKeyData returned null")
                 showError("Failed to parse public key data")
             }
         } catch (e: Exception) {
+            android.util.Log.e("ScanQRActivity", "importPublicKey exception: ${e.message}", e)
             showError("Failed to import public key: ${e.message}")
             isProcessingQR = false
         }

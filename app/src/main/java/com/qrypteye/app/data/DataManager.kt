@@ -210,14 +210,14 @@ class DataManager(private val context: Context) {
         // SECURITY: Plaintext Message objects are immediately encrypted before storage
         val secureMessages = messages.map { message ->
             SecureMessage(
-                id = message.id,
-                senderName = message.senderName,
-                recipientName = message.recipientName,
-                content = message.content,
-                timestamp = message.timestamp,
-                isOutgoing = message.isOutgoing,
-                isRead = message.isRead
-                // sessionNonce will use default value (cryptographically random)
+                message.id,
+                message.senderName,
+                message.recipientName,
+                message.content,
+                message.timestamp,
+                generateSessionNonce(), // Explicitly provide sessionNonce
+                message.isOutgoing,
+                message.isRead
             )
         }
         secureDataManager.saveMessages(secureMessages)
@@ -251,17 +251,24 @@ class DataManager(private val context: Context) {
     
     fun addMessage(message: Message) {
         // Convert to SecureMessage and add
+        // Use positional parameters to let default values apply for sessionNonce, signature, and senderPublicKeyHash
         val secureMessage = SecureMessage(
-            id = message.id,
-            senderName = message.senderName,
-            recipientName = message.recipientName,
-            content = message.content,
-            timestamp = message.timestamp,
-            isOutgoing = message.isOutgoing,
-            isRead = message.isRead
-            // sessionNonce will use default value (cryptographically random)
+            message.id,
+            message.senderName,
+            message.recipientName,
+            message.content,
+            message.timestamp,
+            generateSessionNonce(), // Explicitly provide sessionNonce
+            message.isOutgoing,
+            message.isRead
         )
         secureDataManager.addMessage(secureMessage)
+    }
+    
+    private fun generateSessionNonce(): String {
+        val bytes = ByteArray(12) // 96-bit nonce for additional security
+        java.security.SecureRandom().nextBytes(bytes)
+        return android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING)
     }
     
     fun markMessageAsRead(messageId: String) {
@@ -316,14 +323,14 @@ class DataManager(private val context: Context) {
         }
         
         val secureMessage = SecureMessage(
-            id = message.id,
-            senderName = message.senderName,
-            recipientName = message.recipientName,
-            content = message.content,
-            timestamp = message.timestamp,
-            isOutgoing = message.isOutgoing,
-            isRead = message.isRead
-            // sessionNonce will use default value (cryptographically random)
+            message.id,
+            message.senderName,
+            message.recipientName,
+            message.content,
+            message.timestamp,
+            generateSessionNonce(), // Explicitly provide sessionNonce
+            message.isOutgoing,
+            message.isRead
         )
         
         return secureDataManager.verifyAndAddMessage(secureMessage, senderPublicKey)
