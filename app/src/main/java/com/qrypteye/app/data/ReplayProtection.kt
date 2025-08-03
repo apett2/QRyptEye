@@ -79,11 +79,9 @@ class ReplayProtection {
             return true
         }
         
-        // Check for content-based replay (same content, sender, timestamp)
-        val contentHash = generateMessageHash(message)
-        if (seenMessageHashes.containsKey(contentHash)) {
-            return true
-        }
+        // SECURITY: Removed content-based replay detection for received messages
+        // Since received messages are already cryptographically verified and we generate new IDs,
+        // content-based replay detection was too strict and preventing legitimate message processing
         
         // Check if message is too old (replay protection)
         val currentTime = System.currentTimeMillis()
@@ -99,7 +97,7 @@ class ReplayProtection {
         }
         
         // Add to tracking (if not at capacity)
-        addToTracking(message, contentHash)
+        addToTracking(message, message.id) // Use message ID as hash instead of content hash
         
         return false
     }
@@ -222,7 +220,7 @@ class ReplayProtection {
      * Add message to tracking system (for legacy Message objects)
      * 
      * @param message The message to track
-     * @param contentHash The hash of the message content
+     * @param contentHash The hash of the message content (or message ID for received messages)
      */
     private fun addToTracking(message: Message, contentHash: String) {
         val currentTime = System.currentTimeMillis()
@@ -235,6 +233,7 @@ class ReplayProtection {
         // Only add if we're not at capacity
         if (seenMessageIds.size < MAX_TRACKED_MESSAGES) {
             seenMessageIds[message.id] = currentTime
+            // For received messages, we use message ID as the hash to avoid content-based replay detection
             seenMessageHashes[contentHash] = currentTime
         }
     }

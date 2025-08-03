@@ -44,6 +44,7 @@ class ScanQRActivity : AppCompatActivity() {
     private var userPrivateKey: PrivateKey? = null
     private var isImportMode: Boolean = false
     private var isProcessingQR: Boolean = false
+    private var isMessageProcessed: Boolean = false // Flag to prevent multiple processing
     
     companion object {
         private const val CAMERA_PERMISSION_REQUEST = 100
@@ -203,8 +204,8 @@ class ScanQRActivity : AppCompatActivity() {
     }
     
     private fun processQRCode(qrContent: String) {
-        if (isProcessingQR) {
-            return // Already processing a QR code
+        if (isProcessingQR || isMessageProcessed) {
+            return // Already processing a QR code or message already processed
         }
         
         isProcessingQR = true
@@ -252,16 +253,6 @@ class ScanQRActivity : AppCompatActivity() {
                 android.util.Log.d("ScanQRActivity", "Sender public key found: ${senderPublicKey != null}")
                 android.util.Log.d("ScanQRActivity", "User private key available: ${privateKey != null}")
                 
-                if (senderPublicKey != null) {
-                    android.util.Log.d("ScanQRActivity", "Sender public key algorithm: ${senderPublicKey.algorithm}")
-                    android.util.Log.d("ScanQRActivity", "Sender public key format: ${senderPublicKey.format}")
-                }
-                
-                if (privateKey != null) {
-                    android.util.Log.d("ScanQRActivity", "User private key algorithm: ${privateKey.algorithm}")
-                    android.util.Log.d("ScanQRActivity", "User private key format: ${privateKey.format}")
-                }
-                
                 if (senderPublicKey == null) {
                     android.util.Log.e("ScanQRActivity", "Sender public key not found")
                     showError(getString(R.string.sender_key_not_found))
@@ -286,13 +277,17 @@ class ScanQRActivity : AppCompatActivity() {
                 when (result) {
                     is CryptoManager.VerificationResult.Success -> {
                         android.util.Log.d("ScanQRActivity", "Message decryption successful")
+                        
+                        // Set flag to prevent further processing
+                        isMessageProcessed = true
+                        
+                        // Stop camera immediately to prevent further scanning
+                        stopCamera()
+                        
                         showAuthenticatedMessage(result.message)
                         
                         // Save message to conversation history
                         saveReceivedMessage(result.message, senderPublicKey)
-                        
-                        // Stop camera to prevent further scanning
-                        stopCamera()
                         
                         // Reset processing flag after successful processing
                         isProcessingQR = false
@@ -326,19 +321,29 @@ class ScanQRActivity : AppCompatActivity() {
     
     private fun saveReceivedMessage(messageContent: String, senderPublicKey: PublicKey) {
         try {
+            android.util.Log.d("ScanQRActivity", "Saving received message, content length: ${messageContent.length}")
+            
             // Find the sender contact by public key
             val contacts = dataManager.loadContacts()
+            android.util.Log.d("ScanQRActivity", "Found ${contacts.size} contacts to search for sender")
+            
             val senderContact = contacts.find { contact ->
                 try {
                     val contactPublicKey = cryptoManager.importPublicKey(contact.publicKeyString)
-                    contactPublicKey == senderPublicKey
+                    val isMatch = contactPublicKey.encoded.contentEquals(senderPublicKey.encoded)
+                    android.util.Log.d("ScanQRActivity", "Comparing contact ${contact.name}: ${if (isMatch) "MATCH" else "no match"}")
+                    isMatch
                 } catch (e: Exception) {
+                    android.util.Log.e("ScanQRActivity", "Error comparing public keys for contact ${contact.name}: ${e.message}")
                     false
                 }
             }
             
             if (senderContact != null) {
+                android.util.Log.d("ScanQRActivity", "Found sender contact: ${senderContact.name}")
                 val userName = dataManager.getUserName()
+                android.util.Log.d("ScanQRActivity", "Current user name: $userName")
+                
                 val receivedMessage = Message(
                     id = generateSecureId(),
                     senderName = senderContact.name,
@@ -349,15 +354,27 @@ class ScanQRActivity : AppCompatActivity() {
                     isRead = false
                 )
                 
+                android.util.Log.d("ScanQRActivity", "Created received message with ID: ${receivedMessage.id}")
+                
                 // SECURITY: Verify and add message with cryptographic signature verification
                 val wasVerified = dataManager.verifyAndAddMessage(receivedMessage, senderPublicKey)
                 
+                android.util.Log.d("ScanQRActivity", "Message verification result: $wasVerified")
+                
                 if (!wasVerified) {
+                    android.util.Log.e("ScanQRActivity", "Message authenticity verification failed")
                     showError("⚠️ Message authenticity verification failed")
+                } else {
+                    android.util.Log.d("ScanQRActivity", "Message saved successfully to conversation history")
                 }
+                
+            } else {
+                android.util.Log.e("ScanQRActivity", "Could not find sender contact for public key")
+                showError("⚠️ Could not identify message sender")
             }
         } catch (e: Exception) {
-            // Log error securely without stack trace
+            android.util.Log.e("ScanQRActivity", "Error saving received message: ${e.message}", e)
+            showError("Failed to save message: ${e.message}")
         }
     }
     
