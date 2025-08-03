@@ -1,0 +1,319 @@
+package com.qrypteye.app.ui
+
+import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.View
+import android.widget.ArrayAdapter
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import com.google.android.material.snackbar.Snackbar
+import com.qrypteye.app.R
+import com.qrypteye.app.crypto.CryptoManager
+import com.qrypteye.app.data.Contact
+import com.qrypteye.app.data.DataManager
+import com.qrypteye.app.data.Message
+import com.qrypteye.app.databinding.ActivityComposeMessageBinding
+import com.qrypteye.app.qr.QRCodeManager
+import java.io.File
+import java.io.FileOutputStream
+import java.security.PrivateKey
+import java.security.PublicKey
+
+class ComposeMessageActivity : AppCompatActivity() {
+    
+    private lateinit var binding: ActivityComposeMessageBinding
+    private lateinit var cryptoManager: CryptoManager
+    private lateinit var qrCodeManager: QRCodeManager
+    private lateinit var dataManager: DataManager
+    
+    private var selectedContact: Contact? = null
+    private var qrCodeBitmap: Bitmap? = null
+    private var userPrivateKey: PrivateKey? = null
+    private var isEncrypting: Boolean = false
+    
+    companion object {
+        private val MAX_MESSAGE_LENGTH = QRCodeManager.MAX_MESSAGE_LENGTH
+    }
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityComposeMessageBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        
+        cryptoManager = CryptoManager()
+        qrCodeManager = QRCodeManager()
+        dataManager = DataManager(this)
+        
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        
+        setupUI()
+        loadContacts()
+        loadUserKeyPair()
+        setupCharacterCounter()
+        
+        // Check if a contact was pre-selected
+        val preSelectedContact = intent.getStringExtra("selected_contact")
+        if (preSelectedContact != null) {
+            // Find and select the contact
+            val contacts = dataManager.loadContacts()
+            val contact = contacts.find { it.name == preSelectedContact }
+            if (contact != null) {
+                selectedContact = contact
+                binding.recipientSpinner.tag = contact
+                binding.recipientSpinner.setText(contact.name, false)
+            }
+        }
+    }
+    
+    private fun setupUI() {
+        binding.toolbar.setNavigationOnClickListener {
+            onBackPressed()
+        }
+        
+        binding.encryptButton.setOnClickListener {
+            encryptAndGenerateQR()
+        }
+    }
+    
+    private fun setupCharacterCounter() {
+        binding.messageEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                updateCharacterCounter(s?.length ?: 0)
+            }
+        })
+        
+        // Set initial character limit
+        binding.messageEditText.filters = arrayOf(android.text.InputFilter.LengthFilter(MAX_MESSAGE_LENGTH))
+        updateCharacterCounter(0)
+    }
+    
+    private fun updateCharacterCounter(currentLength: Int) {
+        val remaining = qrCodeManager.getRemainingCharacters(currentLength)
+        val isWithinLimit = qrCodeManager.isMessageWithinCapacity(currentLength)
+        
+        // Update character counter text
+        binding.characterCounter.text = "$currentLength/$MAX_MESSAGE_LENGTH"
+        
+        // Update character counter color based on remaining characters
+        val colorRes = when {
+            remaining <= 50 -> R.color.error
+            remaining <= 100 -> R.color.warning
+            else -> R.color.text_secondary
+        }
+        binding.characterCounter.setTextColor(ContextCompat.getColor(this, colorRes))
+        
+        // Update encrypt button state
+        binding.encryptButton.isEnabled = isWithinLimit && currentLength > 0 && !isEncrypting
+        
+        // Show detailed QR code information
+        if (currentLength > 0) {
+            val capacity = qrCodeManager.calculateQRCodeCapacity(currentLength)
+            val qrSize = qrCodeManager.estimateQRCodeSize(currentLength)
+            
+            // Build detailed QR info string
+            val qrInfo = buildString {
+                append("QR: ${capacity.recommendedVersion} (${getVersionSize(capacity.recommendedVersion)})")
+                append(" • ${capacity.recommendedErrorCorrection}")
+                append(" • ${capacity.estimatedJsonSize} bytes")
+            }
+            
+            binding.qrSizeIndicator.text = qrInfo
+            
+            // Set color based on QR size
+            val qrColorRes = when (qrSize) {
+                QRCodeManager.QRCodeSize.SMALL -> R.color.success
+                QRCodeManager.QRCodeSize.MEDIUM -> R.color.text_secondary
+                QRCodeManager.QRCodeSize.LARGE -> R.color.warning
+                QRCodeManager.QRCodeSize.TOO_LARGE -> R.color.error
+            }
+            binding.qrSizeIndicator.setTextColor(ContextCompat.getColor(this, qrColorRes))
+        } else {
+            binding.qrSizeIndicator.text = ""
+        }
+    }
+    
+    private fun getVersionSize(version: Int): String {
+        return when (version) {
+            25 -> "512×512"
+            30 -> "672×672"
+            40 -> "896×896"
+            else -> "Unknown"
+        }
+    }
+    
+    private fun loadContacts() {
+        // Load contacts from persistent storage
+        val contacts = dataManager.loadContacts()
+        
+        if (contacts.isEmpty()) {
+            // Show message when no contacts are available
+            binding.recipientLayout.hint = "No contacts available"
+            binding.recipientSpinner.setText("", false)
+            binding.recipientSpinner.isEnabled = false
+            binding.encryptButton.isEnabled = false
+            showError("No contacts found. Please import public keys first.")
+        } else {
+            val contactNames = contacts.map { it.name }
+            val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, contactNames)
+            binding.recipientSpinner.setAdapter(adapter)
+            binding.recipientLayout.hint = "Select recipient"
+            binding.recipientSpinner.isEnabled = true
+            
+            binding.recipientSpinner.setOnItemClickListener { _, _, position, _ ->
+                selectedContact = contacts[position]
+                // Store the selected contact to prevent timeout issues
+                binding.recipientSpinner.tag = selectedContact
+            }
+        }
+    }
+    
+    private fun loadUserKeyPair() {
+        // Load user's key pair from persistent storage
+        val keyPairData = dataManager.loadKeyPair()
+        if (keyPairData != null) {
+            try {
+                userPrivateKey = cryptoManager.importPrivateKey(keyPairData.privateKeyString)
+            } catch (e: Exception) {
+                showError("Failed to load user key pair: ${e.message}")
+            }
+        } else {
+            showError("No key pair found. Please generate keys first.")
+        }
+    }
+    
+    private fun encryptAndGenerateQR() {
+        val message = binding.messageEditText.text.toString().trim()
+        val recipient = selectedContact ?: binding.recipientSpinner.tag as? Contact
+        val privateKey = userPrivateKey
+        
+        if (message.isEmpty()) {
+            showError("Please enter a message")
+            return
+        }
+        
+        if (recipient == null) {
+            showError("Please select a recipient")
+            return
+        }
+        
+        if (privateKey == null) {
+            showError("User key pair not available. Please generate keys first.")
+            return
+        }
+        
+        if (!qrCodeManager.isMessageWithinCapacity(message.length)) {
+            showError("Message is too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed.")
+            return
+        }
+        
+        if (isEncrypting) {
+            showError("Already encrypting a message. Please wait.")
+            return
+        }
+        
+        isEncrypting = true
+        binding.encryptButton.isEnabled = false
+        
+        try {
+            // Import recipient's public key
+            val publicKey = cryptoManager.importPublicKey(recipient.publicKeyString)
+            
+            // Create signed encrypted message
+            val signedMessage = cryptoManager.createSignedEncryptedMessage(
+                message, publicKey, privateKey
+            )
+            
+            // Generate QR code
+            qrCodeBitmap = qrCodeManager.generateQRCodeForSignedMessage(signedMessage)
+            
+            if (qrCodeBitmap != null) {
+                displayQRCode()
+                showSuccess("Message encrypted and signed successfully")
+                
+                // Save message to conversation history
+                val userName = dataManager.getUserName()
+                val savedMessage = Message(
+                    id = java.util.UUID.randomUUID().toString(),
+                    senderName = userName,
+                    recipientName = recipient.name,
+                    content = message,
+                    timestamp = System.currentTimeMillis(),
+                    isOutgoing = true
+                )
+                dataManager.addMessage(savedMessage)
+                
+            } else {
+                showError("Failed to generate QR code")
+            }
+            
+        } catch (e: Exception) {
+            showError("Encryption failed: ${e.message}")
+        } finally {
+            isEncrypting = false
+            binding.encryptButton.isEnabled = true
+        }
+    }
+    
+    private fun displayQRCode() {
+        // Save QR bitmap to file to avoid binder transaction error
+        qrCodeBitmap?.let { bitmap ->
+            try {
+                val fileName = "qrypteye_message_${System.currentTimeMillis()}.png"
+                val file = File(getExternalFilesDir(null), fileName)
+                val outputStream = FileOutputStream(file)
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                outputStream.close()
+                
+                // Launch full-screen QR activity with file path instead of bitmap
+                val intent = Intent(this, QRCodeFullScreenActivity::class.java).apply {
+                    putExtra(QRCodeFullScreenActivity.EXTRA_QR_FILE_PATH, file.absolutePath)
+                    // Don't include message preview to prevent plain text exposure
+                }
+                startActivity(intent)
+                
+                // Clear the message after successful encryption
+                binding.messageEditText.text?.clear()
+                
+            } catch (e: Exception) {
+                showError("Failed to save QR code: ${e.message}")
+            }
+        } ?: run {
+            showError("No QR code generated")
+        }
+    }
+    
+    private fun saveQRCode() {
+        qrCodeBitmap?.let { bitmap ->
+            try {
+                val fileName = "qrypteye_message_${System.currentTimeMillis()}.png"
+                val file = File(getExternalFilesDir(null), fileName)
+                val outputStream = FileOutputStream(file)
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                outputStream.close()
+                
+                showSuccess("QR code saved to ${file.name}")
+            } catch (e: Exception) {
+                showError("Failed to save QR code: ${e.message}")
+            }
+        }
+    }
+    
+    private fun showSuccess(message: String) {
+        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
+            .setBackgroundTint(getColor(R.color.success))
+            .show()
+    }
+    
+    private fun showError(message: String) {
+        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG)
+            .setBackgroundTint(getColor(R.color.error))
+            .show()
+    }
+} 

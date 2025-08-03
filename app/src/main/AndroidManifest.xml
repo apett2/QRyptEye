@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Camera permissions for QR code scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- Storage permissions for saving QR codes -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+
+    <!-- Network and connectivity permissions for air-gap checking -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    
+    <!-- Notification permission for air-gap warnings -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.QRyptEye"
+        tools:targetApi="31">
+        
+        <activity
+            android:name=".ui.ConversationsActivity"
+            android:exported="true"
+            android:theme="@style/Theme.QRyptEye">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QRyptEye" />
+            
+        <activity
+            android:name=".ui.ComposeMessageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QRyptEye" />
+            
+        <activity
+            android:name=".ui.ScanQRActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QRyptEye" />
+            
+        <activity
+            android:name=".ui.KeyManagementActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QRyptEye" />
+            
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QRyptEye" />
+        <activity android:name=".ui.ConversationDetailActivity" android:exported="false" android:theme="@style/Theme.QRyptEye" />
+        <activity android:name=".ui.SavedQRCodesActivity" android:exported="false" android:theme="@style/Theme.QRyptEye" />
+        <activity 
+            android:name=".ui.QRCodeFullScreenActivity" 
+            android:exported="false" 
+            android:theme="@style/Theme.QRyptEye"
+            android:screenOrientation="portrait" />
+            
+        <!-- FileProvider for sharing QR codes -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest> 

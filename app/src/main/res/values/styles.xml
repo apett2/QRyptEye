@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Style for circular image views -->
+    <style name="CircleImageView">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+    
+    <!-- Style for popup menu to ensure proper text colors -->
+    <style name="PopupMenuStyle" parent="Widget.Material3.PopupMenu">
+        <!-- Background -->
+        <item name="android:popupBackground">@color/menu_background</item>
+        <!-- Text color for items -->
+        <item name="android:textColor">@color/menu_text</item>
+        <item name="android:itemBackground">@color/menu_background</item>
+    </style>
+    
+    <!-- Text appearance for popup menu items -->
+    <style name="PopupMenuItemText" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textColor">@color/menu_text</item>
+    </style>
+    
+    <!-- Style for popup menu list view -->
+    <style name="PopupMenuListViewStyle" parent="Widget.AppCompat.ListView.DropDown">
+        <item name="android:background">@color/menu_background</item>
+        <item name="android:textColor">@color/menu_text</item>
+        <item name="android:divider">@color/divider</item>
+        <item name="android:dividerHeight">1dp</item>
+        <item name="android:listSelector">@color/primary_light</item>
+    </style>
+    
+    <!-- Alternative menu style for better compatibility -->
+    <style name="MenuStyle" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:textColor">@color/menu_text</item>
+        <item name="android:itemBackground">@color/menu_background</item>
+        <item name="android:popupBackground">@color/menu_background</item>
+    </style>
+</resources> 

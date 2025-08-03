@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive data from backup -->
+    <exclude domain="sharedpref" path="crypto_keys.xml"/>
+    <exclude domain="sharedpref" path="contacts.xml"/>
+    <exclude domain="file" path="private_keys/"/>
+    <exclude domain="file" path="public_keys/"/>
+</full-backup-content> 

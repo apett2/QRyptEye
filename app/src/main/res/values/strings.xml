@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">QRyptEye</string>
+    
+    <!-- Main Activity -->
+    <string name="compose_message">Compose Message</string>
+    <string name="scan_qr_code">Scan QR Code</string>
+    <string name="manage_keys">Manage Keys</string>
+    <string name="secure_messaging">Secure Messaging</string>
+    <string name="air_gapped_communication">Air-Gapped Communication</string>
+    
+    <!-- Compose Message -->
+    <string name="enter_message">Enter your message</string>
+    <string name="recipient">Recipient</string>
+    <string name="select_recipient">Select recipient</string>
+    <string name="encrypt_and_generate">Encrypt &amp; Generate QR</string>
+    <string name="message_encrypted_signed">Message encrypted and signed successfully</string>
+    <string name="signed_qr_code_generated">Signed QR code generated</string>
+    <string name="save_qr_code">Save QR Code</string>
+    <string name="share_qr_code">Share QR Code</string>
+    <string name="message_too_long">Message is too long. Maximum %d characters allowed.</string>
+    <string name="qr_easy_scan">QR Code: Easy to scan</string>
+    <string name="qr_good_size">QR Code: Good size</string>
+    <string name="qr_hard_scan">QR Code: May be harder to scan</string>
+    <string name="qr_too_large">QR Code: Too large for reliable scanning</string>
+    
+    <!-- Scan QR -->
+    <string name="scan_qr_title">Scan QR Code</string>
+    <string name="point_camera_at_qr">Point camera at QR code</string>
+    <string name="qr_code_detected">QR code detected</string>
+    <string name="verifying_authenticity">Verifying authenticity…</string>
+    <string name="message_verified">Message verified and decrypted successfully</string>
+    <string name="authenticity_failed">AUTHENTICITY CHECK FAILED - Message may be tampered with!</string>
+    <string name="invalid_qr_code">Invalid QR code format</string>
+    <string name="decryption_failed">Decryption failed</string>
+    <string name="sender_key_not_found">Sender\'s public key not found in contacts</string>
+    
+    <!-- Key Management -->
+    <string name="key_management">Key Management</string>
+    <string name="generate_new_keypair">Generate New Keypair</string>
+    <string name="export_public_key">Export Public Key</string>
+    <string name="import_public_key">Import Public Key</string>
+    <string name="my_public_key">My Public Key</string>
+    <string name="contacts">Contacts</string>
+    <string name="add_contact">Add Contact</string>
+    <string name="contact_name">Contact Name</string>
+    <string name="public_key">Public Key</string>
+    <string name="key_generated">Keypair generated successfully</string>
+    <string name="key_exported">Public key exported</string>
+    <string name="key_imported">Public key imported</string>
+    
+    <!-- Authenticity -->
+    <string name="authentic_message">AUTHENTIC MESSAGE</string>
+    <string name="authenticity_verified">✅ Authenticity verified</string>
+    <string name="tampering_detected">🚨 Tampering detected!</string>
+    
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="error">Error</string>
+    <string name="success">Success</string>
+    <string name="permission_required">Permission Required</string>
+    <string name="camera_permission_required">Camera permission is required to scan QR codes</string>
+    <string name="grant_permission">Grant Permission</string>
+    
+    <!-- Security -->
+    <string name="security_warning">Security Warning</string>
+    <string name="offline_device_only">This app is designed for offline devices only</string>
+    <string name="never_connect_to_internet">Never connect this device to the internet</string>
+    <string name="keep_private_keys_secure">Keep your private keys secure and never share them</string>
+    <string name="verify_qr_authenticity">Always verify QR code authenticity before scanning</string>
+</resources> 

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_key_management"
+        android:icon="@drawable/ic_key"
+        android:title="Key Management"
+        android:iconTint="@color/text_primary"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="User Settings"
+        android:iconTint="@color/text_primary"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_saved_qr_codes"
+        android:icon="@drawable/ic_qr_code"
+        android:title="Saved QR Codes"
+        android:iconTint="@color/text_primary"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_scan_qr"
+        android:icon="@drawable/ic_qr_code_scanner"
+        android:title="Scan QR Code"
+        android:iconTint="@color/text_primary"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_airgap_status"
+        android:icon="@drawable/ic_security"
+        android:title="Air-Gap Status"
+        android:iconTint="@color/text_primary"
+        app:showAsAction="never" />
+
+</menu> 
