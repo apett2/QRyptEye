@@ -36,7 +36,9 @@ class SecureKeyManager(private val context: Context) {
         private const val KEY_SIZE = 2048 // RSA key size
         private const val KEY_PURPOSES = KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT or KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
         private const val DIGEST_ALGORITHMS = KeyProperties.DIGEST_SHA256
-        private const val ENCRYPTION_PADDINGS = KeyProperties.ENCRYPTION_PADDING_RSA_OAEP
+        // SECURITY: Using PKCS#1 v1.5 padding for maximum compatibility with CryptoManager
+        // OAEP padding can have compatibility issues with Android Keystore's default parameters
+        private const val ENCRYPTION_PADDINGS = KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1
         private const val SIGNATURE_PADDINGS = KeyProperties.SIGNATURE_PADDING_RSA_PKCS1
     }
     

@@ -162,6 +162,8 @@ class ComposeMessageActivity : AppCompatActivity() {
         // Load contacts from persistent storage
         val contacts = dataManager.loadContacts()
         
+        android.util.Log.d("ComposeMessageActivity", "Loaded ${contacts.size} contacts from data manager")
+        
         if (contacts.isEmpty()) {
             // Show message when no contacts are available
             binding.recipientLayout.hint = "No contacts available"
@@ -172,15 +174,20 @@ class ComposeMessageActivity : AppCompatActivity() {
         } else {
             // Validate contacts and filter out invalid ones
             val validContacts = contacts.filter { contact ->
+                android.util.Log.d("ComposeMessageActivity", "Validating contact: ${contact.name}")
                 if (contact.isValid()) {
+                    android.util.Log.d("ComposeMessageActivity", "Contact ${contact.name} is valid")
                     true
                 } else {
                     // Log invalid contact for debugging
                     val validationResult = contact.getValidationResult()
+                    android.util.Log.e("ComposeMessageActivity", "Contact ${contact.name} is invalid: ${validationResult.message}")
                     showError("Invalid contact '${contact.name}': ${validationResult.message}")
                     false
                 }
             }
+            
+            android.util.Log.d("ComposeMessageActivity", "Found ${validContacts.size} valid contacts out of ${contacts.size} total")
             
             if (validContacts.isEmpty()) {
                 // All contacts are invalid

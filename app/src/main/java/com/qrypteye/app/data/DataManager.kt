@@ -148,7 +148,9 @@ class DataManager(private val context: Context) {
     }
     
     fun loadContacts(): List<Contact> {
-        return secureDataManager.loadContacts()
+        val contacts = secureDataManager.loadContacts()
+        android.util.Log.d("DataManager", "loadContacts: loaded ${contacts.size} contacts from secure data manager")
+        return contacts
     }
     
     fun addContact(contact: Contact) {
@@ -177,12 +179,12 @@ class DataManager(private val context: Context) {
         return secureDataManager.hasKeyPair()
     }
     
-    fun loadKeyPair(): java.security.KeyPair? {
-        return secureDataManager.loadKeyPair()
-    }
+    // SECURITY: Removed saveKeyPair method that was causing key regeneration issues
+    // Key pairs are now only generated via generateKeyPair() which properly stores them in Android Keystore
+    // This prevents key mismatches that cause decryption failures
     
-    fun saveKeyPair(keyPair: java.security.KeyPair) {
-        secureDataManager.saveKeyPair(keyPair)
+    fun loadKeyPair(): KeyPair? {
+        return secureDataManager.loadKeyPair()
     }
     
     fun deleteKeyPair() {

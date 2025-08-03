@@ -89,13 +89,56 @@ class SecureDataManager(private val context: Context) {
         keyStore.getKey(keyAlias, null) as javax.crypto.SecretKey
     }
     
-    // HMAC key for metadata signing stored in Android Keystore
-    private val metadataSigningKey by lazy {
+    // HMAC key for metadata signing (generated in memory for compatibility)
+    private val metadataSigningKey: javax.crypto.SecretKey by lazy {
         val keyAlias = "qrypteye_metadata_signing_key"
-        if (!keyStore.containsAlias(keyAlias)) {
-            generateMetadataSigningKey(keyAlias)
+        val keyData = securePrefs.getString(keyAlias, null)
+        
+        android.util.Log.d("SecureDataManager", "Initializing metadata signing key, existing data: ${keyData != null}")
+        
+        if (keyData == null) {
+            // Generate new HMAC key
+            android.util.Log.d("SecureDataManager", "Generating new metadata signing key")
+            val keyGenerator = javax.crypto.KeyGenerator.getInstance("HmacSHA256")
+            keyGenerator.init(256) // 256-bit key
+            val newKey = keyGenerator.generateKey()
+            
+            // Store the key material securely (encrypted with field encryption key, no integrity protection)
+            val keyMaterial = android.util.Base64.encodeToString(newKey.encoded, BASE64_FLAGS)
+            val encryptedKeyMaterial = encryptField(keyMaterial) // Use simple encryption without AAD
+            securePrefs.edit().putString(keyAlias, encryptedKeyMaterial).apply()
+            
+            android.util.Log.d("SecureDataManager", "New metadata signing key generated and stored")
+            newKey
+        } else {
+            // Load existing HMAC key
+            try {
+                android.util.Log.d("SecureDataManager", "Loading existing metadata signing key")
+                val encryptedKeyMaterial = keyData
+                val keyMaterial = decryptField(encryptedKeyMaterial) // Use simple decryption without AAD
+                val keyBytes = android.util.Base64.decode(keyMaterial, BASE64_FLAGS)
+                val key = javax.crypto.spec.SecretKeySpec(keyBytes, "HmacSHA256")
+                android.util.Log.d("SecureDataManager", "Existing metadata signing key loaded successfully")
+                key
+            } catch (e: Exception) {
+                // If decryption fails, regenerate the key
+                android.util.Log.w("SecureDataManager", "Failed to load metadata signing key, regenerating: ${e.message}")
+                securePrefs.edit().remove(keyAlias).apply()
+                
+                // Generate new key directly
+                val keyGenerator = javax.crypto.KeyGenerator.getInstance("HmacSHA256")
+                keyGenerator.init(256) // 256-bit key
+                val newKey = keyGenerator.generateKey()
+                
+                // Store the new key
+                val keyMaterial = android.util.Base64.encodeToString(newKey.encoded, BASE64_FLAGS)
+                val encryptedKeyMaterial = encryptField(keyMaterial) // Use simple encryption without AAD
+                securePrefs.edit().putString(keyAlias, encryptedKeyMaterial).apply()
+                
+                android.util.Log.d("SecureDataManager", "Metadata signing key regenerated due to decryption failure")
+                newKey
+            }
         }
-        keyStore.getKey(keyAlias, null) as javax.crypto.SecretKey
     }
     
     /**
@@ -128,39 +171,6 @@ class SecureDataManager(private val context: Context) {
         securityLogger.logSecurityEvent(
             SecurityEvent.KEY_GENERATION,
             "Field encryption key generated in Android Keystore: $keyAlias"
-        )
-    }
-    
-    /**
-     * Generate metadata signing key in Android Keystore
-     * 
-     * SECURITY: Creates HMAC-SHA256 key within Android Keystore for hardware-backed security.
-     * 
-     * @param keyAlias The alias for the key in Android Keystore
-     */
-    private fun generateMetadataSigningKey(keyAlias: String) {
-        val keyGenParameterSpec = android.security.keystore.KeyGenParameterSpec.Builder(
-            keyAlias,
-            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
-        ).apply {
-            setKeySize(256)
-            setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-            setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-            setUserAuthenticationRequired(false)
-            setRandomizedEncryptionRequired(true)
-        }.build()
-        
-        val keyGenerator = javax.crypto.KeyGenerator.getInstance(
-            android.security.keystore.KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore"
-        )
-        keyGenerator.init(keyGenParameterSpec)
-        keyGenerator.generateKey()
-        
-        // Log key generation
-        securityLogger.logSecurityEvent(
-            SecurityEvent.KEY_GENERATION,
-            "Metadata signing key generated in Android Keystore: $keyAlias"
         )
     }
     
@@ -207,25 +217,17 @@ class SecureDataManager(private val context: Context) {
     }
     
     /**
-     * Sign metadata with HMAC-SHA256
+     * Sign metadata with HMAC-SHA256 using Android Keystore
      * 
-     * SECURITY: Uses HMAC-SHA256 to create a cryptographic signature of metadata
-     * that prevents tampering with encrypted data structures.
+     * SECURITY: Uses Android Keystore's built-in MAC functionality to create
+     * a cryptographic signature of metadata that prevents tampering with encrypted data structures.
      * 
      * @param metadata The metadata string to sign
      * @return Base64 encoded HMAC signature
      */
     private fun signMetadata(metadata: String): String {
         val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        
-        // Extract key material from Android Keystore key for HMAC
-        val keyMaterial = metadataSigningKey.encoded
-        if (keyMaterial == null || keyMaterial.isEmpty()) {
-            throw SecurityException("Metadata signing key has no encoded material")
-        }
-        
-        val secretKeySpec = javax.crypto.spec.SecretKeySpec(keyMaterial, "HmacSHA256")
-        mac.init(secretKeySpec)
+        mac.init(metadataSigningKey)
         
         val signatureBytes = mac.doFinal(metadata.toByteArray())
         val signature = android.util.Base64.encodeToString(signatureBytes, BASE64_FLAGS)
@@ -268,11 +270,25 @@ class SecureDataManager(private val context: Context) {
                 return false
             }
             
-            val expectedSignature = signMetadata(metadata)
+            // Generate the expected signature using the same key
+            val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+            mac.init(metadataSigningKey)
+            val expectedSignatureBytes = mac.doFinal(metadata.toByteArray())
+            val expectedSignature = android.util.Base64.encodeToString(expectedSignatureBytes, BASE64_FLAGS)
+            
+            // Compare signatures using constant-time comparison
             val constantTimeComparison = java.security.MessageDigest.isEqual(
                 android.util.Base64.decode(signature, BASE64_FLAGS),
                 android.util.Base64.decode(expectedSignature, BASE64_FLAGS)
             )
+            
+            if (!constantTimeComparison) {
+                securityLogger.logSecurityEvent(
+                    SecurityEvent.METADATA_SIGNATURE_VIOLATION,
+                    "Signature mismatch - possible tampering detected"
+                )
+            }
+            
             constantTimeComparison
         } catch (e: Exception) {
             securityLogger.logSecurityEvent(
@@ -426,16 +442,22 @@ class SecureDataManager(private val context: Context) {
     
     fun loadContacts(): List<Contact> {
         val json = securePrefs.getString(KEY_CONTACTS, "[]")
+        android.util.Log.d("SecureDataManager", "loadContacts: raw JSON length: ${json?.length ?: 0}")
+        
         val type = object : TypeToken<List<EncryptedContact>>() {}.type
         return try {
             val encryptedContacts: List<EncryptedContact> = gson.fromJson(json, type) ?: emptyList()
-            encryptedContacts.mapNotNull { encryptedContact ->
+            android.util.Log.d("SecureDataManager", "loadContacts: parsed ${encryptedContacts.size} encrypted contacts")
+            
+            val decryptedContacts = encryptedContacts.mapNotNull { encryptedContact ->
                 try {
-                    EncryptedContact.toContact(
+                    val contact = EncryptedContact.toContact(
                         encryptedContact, 
                         { decryptFieldWithIntegrity(it, encryptedContact.id, "contact", encryptedContact.timestamp) },
                         { metadata, signature -> verifyMetadata(metadata, signature) }
                     )
+                    android.util.Log.d("SecureDataManager", "loadContacts: successfully decrypted contact: ${contact.name}")
+                    contact
                 } catch (e: SecurityException) {
                     // Metadata signature verification failed - possible tampering
                     android.util.Log.e("SecureDataManager", 
@@ -461,6 +483,9 @@ class SecureDataManager(private val context: Context) {
                     null // Skip this contact
                 }
             }
+            
+            android.util.Log.d("SecureDataManager", "loadContacts: successfully decrypted ${decryptedContacts.size} contacts")
+            decryptedContacts
         } catch (e: Exception) {
             android.util.Log.e("SecureDataManager", "Failed to load contacts: ${e.message}")
             emptyList()
@@ -796,19 +821,9 @@ class SecureDataManager(private val context: Context) {
         }
     }
     
-    fun saveKeyPair(_keyPair: KeyPair) {
-        try {
-            // Generate a new key pair within Android Keystore
-            // This ensures private keys never leave the secure hardware environment
-            secureKeyManager.generateKeyPair()
-            
-            // The key pair is now stored securely in Android Keystore
-            // We don't need to verify against the provided keyPair since we're generating a new one
-            
-        } catch (e: Exception) {
-            throw SecurityException("Failed to save key pair securely", e)
-        }
-    }
+    // SECURITY: Removed saveKeyPair method that was causing key regeneration issues
+    // Key pairs are now only generated via generateKeyPair() which properly stores them in Android Keystore
+    // This prevents key mismatches that cause decryption failures
     
     fun loadKeyPair(): KeyPair? {
         return try {

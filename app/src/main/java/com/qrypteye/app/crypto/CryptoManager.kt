@@ -50,9 +50,9 @@ class CryptoManager {
         // SECURITY: Using GCM for authenticated encryption to prevent tampering attacks
         // GCM provides both confidentiality and integrity in a single operation
         private const val AES_ALGORITHM = "AES/GCM/NoPadding"
-        // SECURITY: Using OAEP padding to prevent padding oracle attacks
-        // OAEPWithSHA-256AndMGF1Padding provides semantic security and is resistant to chosen-ciphertext attacks
-        private const val RSA_ALGORITHM = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
+        // SECURITY: Using PKCS#1 v1.5 padding for maximum compatibility with Android Keystore
+        // OAEP padding can have compatibility issues with Android Keystore's default parameters
+        private const val RSA_ALGORITHM = "RSA/ECB/PKCS1Padding"
         private const val SIGNATURE_ALGORITHM = "SHA256withRSA"
         private const val GCM_IV_LENGTH = 12  // 96 bits for GCM
         private const val GCM_TAG_LENGTH = 16 // 128 bits for authentication tag
@@ -189,28 +189,55 @@ class CryptoManager {
      * Decrypt a message using hybrid decryption
      */
     fun decryptMessage(encryptedMessage: EncryptedMessage, privateKey: PrivateKey): String {
-        // Validate encrypted message size
-        val totalSize = encryptedMessage.encryptedData.length + 
-                       encryptedMessage.encryptedKey.length + 
-                       encryptedMessage.iv.length + 
-                       encryptedMessage.authTag.length
-        
-        if (totalSize > MAX_ENCRYPTED_MESSAGE_SIZE) {
-            throw SecurityException("Encrypted message exceeds size limit")
+        try {
+            android.util.Log.d("CryptoManager", "Starting decryptMessage")
+            
+            // Validate encrypted message size
+            val totalSize = encryptedMessage.encryptedData.length + 
+                           encryptedMessage.encryptedKey.length + 
+                           encryptedMessage.iv.length + 
+                           encryptedMessage.authTag.length
+            
+            android.util.Log.d("CryptoManager", "Total encrypted message size: $totalSize bytes")
+            
+            if (totalSize > MAX_ENCRYPTED_MESSAGE_SIZE) {
+                throw SecurityException("Encrypted message exceeds size limit")
+            }
+            
+            android.util.Log.d("CryptoManager", "Decrypting AES key with RSA private key")
+            
+            // Decrypt the AES key with our RSA private key
+            val encryptedAESKeyBytes = Base64.decode(encryptedMessage.encryptedKey, BASE64_FLAGS)
+            android.util.Log.d("CryptoManager", "Encrypted AES key length: ${encryptedAESKeyBytes.size} bytes")
+            
+            val aesKeyBytes = decryptWithRSA(encryptedAESKeyBytes, privateKey)
+            android.util.Log.d("CryptoManager", "Decrypted AES key length: ${aesKeyBytes.size} bytes")
+            
+            val aesKey = SecretKeySpec(aesKeyBytes, "AES")
+            
+            android.util.Log.d("CryptoManager", "Decrypting message data with AES")
+            
+            // Decrypt the message with AES
+            val encryptedDataBytes = Base64.decode(encryptedMessage.encryptedData, BASE64_FLAGS)
+            val ivBytes = Base64.decode(encryptedMessage.iv, BASE64_FLAGS)
+            val authTagBytes = Base64.decode(encryptedMessage.authTag, BASE64_FLAGS)
+            
+            android.util.Log.d("CryptoManager", "Encrypted data length: ${encryptedDataBytes.size} bytes")
+            android.util.Log.d("CryptoManager", "IV length: ${ivBytes.size} bytes")
+            android.util.Log.d("CryptoManager", "Auth tag length: ${authTagBytes.size} bytes")
+            
+            val decryptedBytes = decryptWithAES(encryptedDataBytes, aesKey, ivBytes, authTagBytes)
+            android.util.Log.d("CryptoManager", "Decrypted data length: ${decryptedBytes.size} bytes")
+            
+            val decryptedMessage = String(decryptedBytes)
+            android.util.Log.d("CryptoManager", "Message decryption successful")
+            
+            return decryptedMessage
+            
+        } catch (e: Exception) {
+            android.util.Log.e("CryptoManager", "Decryption failed: ${e.message}", e)
+            throw e
         }
-        
-        // Decrypt the AES key with our RSA private key
-        val encryptedAESKeyBytes = Base64.decode(encryptedMessage.encryptedKey, BASE64_FLAGS)
-        val aesKeyBytes = decryptWithRSA(encryptedAESKeyBytes, privateKey)
-        val aesKey = SecretKeySpec(aesKeyBytes, "AES")
-        
-        // Decrypt the message with AES
-        val encryptedDataBytes = Base64.decode(encryptedMessage.encryptedData, BASE64_FLAGS)
-        val ivBytes = Base64.decode(encryptedMessage.iv, BASE64_FLAGS)
-        val authTagBytes = Base64.decode(encryptedMessage.authTag, BASE64_FLAGS)
-        val decryptedBytes = decryptWithAES(encryptedDataBytes, aesKey, ivBytes, authTagBytes)
-        
-        return String(decryptedBytes)
     }
     
     /**
@@ -402,13 +429,27 @@ class CryptoManager {
     }
     
     private fun decryptWithAES(encryptedData: ByteArray, key: SecretKey, iv: ByteArray, authTag: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance(AES_ALGORITHM)
-        val ivSpec = IvParameterSpec(iv)
-        cipher.init(Cipher.DECRYPT_MODE, key, ivSpec)
-        
-        // Combine ciphertext and authentication tag for GCM decryption
-        val combinedData = encryptedData + authTag
-        return cipher.doFinal(combinedData)
+        try {
+            android.util.Log.d("CryptoManager", "Starting AES decryption")
+            android.util.Log.d("CryptoManager", "AES key algorithm: ${key.algorithm}")
+            android.util.Log.d("CryptoManager", "AES key length: ${key.encoded.size} bytes")
+            
+            val cipher = Cipher.getInstance(AES_ALGORITHM)
+            val ivSpec = IvParameterSpec(iv)
+            cipher.init(Cipher.DECRYPT_MODE, key, ivSpec)
+            
+            // Combine ciphertext and authentication tag for GCM decryption
+            val combinedData = encryptedData + authTag
+            android.util.Log.d("CryptoManager", "Combined data length: ${combinedData.size} bytes")
+            
+            val decryptedBytes = cipher.doFinal(combinedData)
+            android.util.Log.d("CryptoManager", "AES decryption successful")
+            
+            return decryptedBytes
+        } catch (e: Exception) {
+            android.util.Log.e("CryptoManager", "AES decryption failed: ${e.message}", e)
+            throw e
+        }
     }
     
     private fun encryptWithRSA(data: ByteArray, publicKey: PublicKey): ByteArray {
@@ -418,9 +459,22 @@ class CryptoManager {
     }
     
     private fun decryptWithRSA(encryptedData: ByteArray, privateKey: PrivateKey): ByteArray {
-        val cipher = Cipher.getInstance(RSA_ALGORITHM)
-        cipher.init(Cipher.DECRYPT_MODE, privateKey)
-        return cipher.doFinal(encryptedData)
+        try {
+            android.util.Log.d("CryptoManager", "Starting RSA decryption")
+            android.util.Log.d("CryptoManager", "RSA private key algorithm: ${privateKey.algorithm}")
+            android.util.Log.d("CryptoManager", "Encrypted data length: ${encryptedData.size} bytes")
+            
+            val cipher = Cipher.getInstance(RSA_ALGORITHM)
+            cipher.init(Cipher.DECRYPT_MODE, privateKey)
+            val decryptedBytes = cipher.doFinal(encryptedData)
+            
+            android.util.Log.d("CryptoManager", "RSA decryption successful, decrypted length: ${decryptedBytes.size} bytes")
+            
+            return decryptedBytes
+        } catch (e: Exception) {
+            android.util.Log.e("CryptoManager", "RSA decryption failed: ${e.message}", e)
+            throw e
+        }
     }
     
     data class AESEncryptedData(

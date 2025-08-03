@@ -110,16 +110,24 @@ class ScanQRActivity : AppCompatActivity() {
     
     private fun loadUserKeyPair() {
         // Load user's key pair from Android Keystore
+        android.util.Log.d("ScanQRActivity", "Loading user key pair from Android Keystore")
         val keyPair = dataManager.loadKeyPair()
         if (keyPair != null) {
             try {
+                android.util.Log.d("ScanQRActivity", "Key pair loaded successfully")
+                android.util.Log.d("ScanQRActivity", "Public key algorithm: ${keyPair.public.algorithm}")
+                android.util.Log.d("ScanQRActivity", "Private key algorithm: ${keyPair.private.algorithm}")
+                
                 // SECURITY: Private key is accessed directly from KeyPair object
                 // No serialization or string conversion
                 userPrivateKey = keyPair.private
+                android.util.Log.d("ScanQRActivity", "User private key set successfully")
             } catch (e: Exception) {
+                android.util.Log.e("ScanQRActivity", "Failed to load user key pair: ${e.message}", e)
                 showError("Failed to load user key pair: ${e.message}")
             }
         } else {
+            android.util.Log.e("ScanQRActivity", "No key pair found in Android Keystore")
             showError("No key pair found. Please generate keys first.")
         }
     }
@@ -228,31 +236,56 @@ class ScanQRActivity : AppCompatActivity() {
     
     private fun processSignedEncryptedMessage(qrContent: String) {
         try {
+            android.util.Log.d("ScanQRActivity", "Processing signed encrypted message, content length: ${qrContent.length}")
             binding.scanStatus.text = getString(R.string.verifying_authenticity)
             
             val signedMessage = qrCodeManager.parseSignedEncryptedMessage(qrContent)
+            android.util.Log.d("ScanQRActivity", "parseSignedEncryptedMessage result: ${signedMessage != null}")
+            
             if (signedMessage != null) {
+                android.util.Log.d("ScanQRActivity", "Signed message parsed successfully")
+                
                 // Get sender's public key from contacts
                 val senderPublicKey = getSenderPublicKey(signedMessage)
                 val privateKey = userPrivateKey
                 
+                android.util.Log.d("ScanQRActivity", "Sender public key found: ${senderPublicKey != null}")
+                android.util.Log.d("ScanQRActivity", "User private key available: ${privateKey != null}")
+                
+                if (senderPublicKey != null) {
+                    android.util.Log.d("ScanQRActivity", "Sender public key algorithm: ${senderPublicKey.algorithm}")
+                    android.util.Log.d("ScanQRActivity", "Sender public key format: ${senderPublicKey.format}")
+                }
+                
+                if (privateKey != null) {
+                    android.util.Log.d("ScanQRActivity", "User private key algorithm: ${privateKey.algorithm}")
+                    android.util.Log.d("ScanQRActivity", "User private key format: ${privateKey.format}")
+                }
+                
                 if (senderPublicKey == null) {
+                    android.util.Log.e("ScanQRActivity", "Sender public key not found")
                     showError(getString(R.string.sender_key_not_found))
                     return
                 }
                 
                 if (privateKey == null) {
+                    android.util.Log.e("ScanQRActivity", "User private key not available")
                     showError("User key pair not available")
                     return
                 }
+                
+                android.util.Log.d("ScanQRActivity", "Starting verifyAndDecryptMessage")
                 
                 // Verify and decrypt the message
                 val result = cryptoManager.verifyAndDecryptMessage(
                     signedMessage, senderPublicKey, privateKey
                 )
                 
+                android.util.Log.d("ScanQRActivity", "verifyAndDecryptMessage result type: ${result::class.simpleName}")
+                
                 when (result) {
                     is CryptoManager.VerificationResult.Success -> {
+                        android.util.Log.d("ScanQRActivity", "Message decryption successful")
                         showAuthenticatedMessage(result.message)
                         
                         // Save message to conversation history
@@ -265,22 +298,27 @@ class ScanQRActivity : AppCompatActivity() {
                         isProcessingQR = false
                     }
                     is CryptoManager.VerificationResult.AuthenticationFailed -> {
+                        android.util.Log.e("ScanQRActivity", "Authentication failed")
                         showError(getString(R.string.authenticity_failed))
                         isProcessingQR = false
                     }
                     is CryptoManager.VerificationResult.ReplayAttack -> {
+                        android.util.Log.e("ScanQRActivity", "Replay attack detected")
                         showError("⚠️ Replay attack detected: This message is too old or from the future")
                         isProcessingQR = false
                     }
                     is CryptoManager.VerificationResult.DecryptionFailed -> {
+                        android.util.Log.e("ScanQRActivity", "Decryption failed: ${result.error}")
                         showError("Decryption failed: ${result.error}")
                         isProcessingQR = false
                     }
                 }
             } else {
+                android.util.Log.e("ScanQRActivity", "Failed to parse signed message")
                 showError("Failed to parse signed message")
             }
         } catch (e: Exception) {
+            android.util.Log.e("ScanQRActivity", "Exception in processSignedEncryptedMessage: ${e.message}", e)
             showError("Failed to process signed message: ${e.message}")
             isProcessingQR = false
         }
@@ -328,14 +366,23 @@ class ScanQRActivity : AppCompatActivity() {
         // For now, we'll need to implement a way to identify the sender
         // This could be done by including sender info in the signed message
         return try {
+            android.util.Log.d("ScanQRActivity", "Looking up sender public key from contacts")
             // For demo purposes, try to find any contact's public key
             val contacts = dataManager.loadContacts()
+            android.util.Log.d("ScanQRActivity", "Found ${contacts.size} contacts to check")
+            
             if (contacts.isNotEmpty()) {
-                cryptoManager.importPublicKey(contacts.first().publicKeyString)
+                val firstContact = contacts.first()
+                android.util.Log.d("ScanQRActivity", "Using first contact: ${firstContact.name}")
+                val publicKey = cryptoManager.importPublicKey(firstContact.publicKeyString)
+                android.util.Log.d("ScanQRActivity", "Successfully imported public key for ${firstContact.name}")
+                publicKey
             } else {
+                android.util.Log.e("ScanQRActivity", "No contacts found")
                 null
             }
         } catch (e: Exception) {
+            android.util.Log.e("ScanQRActivity", "Error in getSenderPublicKey: ${e.message}", e)
             null
         }
     }
