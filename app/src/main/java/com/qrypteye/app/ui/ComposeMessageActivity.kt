@@ -238,6 +238,16 @@ class ComposeMessageActivity : AppCompatActivity() {
             return
         }
         
+        // SECURITY: Validate message content before encryption
+        val contentValidation = com.qrypteye.app.data.ContactValidator.validateMessageContent(message, MAX_MESSAGE_LENGTH)
+        if (contentValidation !is com.qrypteye.app.data.ContactValidator.MessageContentValidationResult.Valid) {
+            showError("Message content validation failed: ${contentValidation.message}")
+            return
+        }
+        
+        // Use validated and normalized content
+        val validatedMessage = contentValidation.normalizedContent
+        
         if (recipient == null) {
             showError("Please select a recipient")
             return
@@ -255,7 +265,7 @@ class ComposeMessageActivity : AppCompatActivity() {
             return
         }
         
-        if (!qrCodeManager.isMessageWithinCapacity(message.length)) {
+        if (!qrCodeManager.isMessageWithinCapacity(validatedMessage.length)) {
             showError("Message is too long. Maximum ${MAX_MESSAGE_LENGTH} characters allowed.")
             return
         }
@@ -272,9 +282,17 @@ class ComposeMessageActivity : AppCompatActivity() {
             // Import recipient's public key (already validated above)
             val publicKey = cryptoManager.importPublicKey(recipient.publicKeyString)
             
-            // Create signed encrypted message
+            // Get user's name and public key for sender identification
+            val currentUserName = dataManager.getUserName()
+            val userKeyPair = dataManager.loadKeyPair()
+            if (userKeyPair == null) {
+                showError("User key pair not available")
+                return
+            }
+            
+            // Create signed encrypted message with sender information
             val signedMessage = cryptoManager.createSignedEncryptedMessage(
-                message, publicKey, privateKey
+                validatedMessage, publicKey, privateKey, currentUserName, userKeyPair.public
             )
             
             // Generate QR code

@@ -315,27 +315,51 @@ class DataManager(private val context: Context) {
      * Verify and add a received message with cryptographic signature verification
      * 
      * @param message The message to verify and add
+     * @param signedMessage The signed encrypted message for verification
      * @param senderPublicKey The public key of the claimed sender
      * @return true if message was verified and added, false otherwise
      */
-    fun verifyAndAddMessage(message: Message, senderPublicKey: java.security.PublicKey): Boolean {
-        // SECURITY: Check for replay attacks first
-        if (secureDataManager.replayProtection.isReplayAttack(message)) {
+    fun verifyAndAddMessage(message: Message, signedMessage: com.qrypteye.app.crypto.CryptoManager.SignedEncryptedMessage, senderPublicKey: java.security.PublicKey): Boolean {
+        try {
+            // SECURITY: Check for replay attacks first
+            if (secureDataManager.replayProtection.isReplayAttack(message)) {
+                android.util.Log.w("DataManager", "Replay attack detected for message: ${message.id}")
+                return false
+            }
+            
+            // SECURITY: Verify the signed message authenticity
+            val cryptoManager = com.qrypteye.app.crypto.CryptoManager()
+            val isAuthentic = cryptoManager.verifySignature(
+                cryptoManager.createSignatureContext(signedMessage.encryptedMessage),
+                signedMessage.signature,
+                senderPublicKey
+            )
+            
+            if (!isAuthentic) {
+                android.util.Log.e("DataManager", "Signature verification failed for message: ${message.id}")
+                return false
+            }
+            
+            // Convert to SecureMessage and add
+            val secureMessage = SecureMessage(
+                message.id,
+                message.senderName,
+                message.recipientName,
+                message.content,
+                message.timestamp,
+                generateSessionNonce(), // Explicitly provide sessionNonce
+                message.isOutgoing,
+                message.isRead
+            )
+            
+            // Add the verified message
+            secureDataManager.addMessage(secureMessage)
+            return true
+            
+        } catch (e: Exception) {
+            android.util.Log.e("DataManager", "Error verifying and adding message: ${e.message}", e)
             return false
         }
-        
-        val secureMessage = SecureMessage(
-            message.id,
-            message.senderName,
-            message.recipientName,
-            message.content,
-            message.timestamp,
-            generateSessionNonce(), // Explicitly provide sessionNonce
-            message.isOutgoing,
-            message.isRead
-        )
-        
-        return secureDataManager.verifyAndAddMessage(secureMessage, senderPublicKey)
     }
     
     /**

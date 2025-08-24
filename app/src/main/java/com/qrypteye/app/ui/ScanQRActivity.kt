@@ -287,7 +287,7 @@ class ScanQRActivity : AppCompatActivity() {
                         showAuthenticatedMessage(result.message)
                         
                         // Save message to conversation history
-                        saveReceivedMessage(result.message, senderPublicKey)
+                        saveReceivedMessage(result.message, signedMessage)
                         
                         // Reset processing flag after successful processing
                         isProcessingQR = false
@@ -319,30 +319,30 @@ class ScanQRActivity : AppCompatActivity() {
         }
     }
     
-    private fun saveReceivedMessage(messageContent: String, senderPublicKey: PublicKey) {
+    private fun saveReceivedMessage(messageContent: String, signedMessage: CryptoManager.SignedEncryptedMessage) {
         try {
             android.util.Log.d("ScanQRActivity", "Saving received message, content length: ${messageContent.length}")
             
-            // Find the sender contact by public key
-            val contacts = dataManager.loadContacts()
-            android.util.Log.d("ScanQRActivity", "Found ${contacts.size} contacts to search for sender")
+            // Get the sender name from the signed message
+            val senderName = signedMessage.encryptedMessage.senderName
+            android.util.Log.d("ScanQRActivity", "Message sender: $senderName")
             
-            val senderContact = contacts.find { contact ->
-                try {
-                    val contactPublicKey = cryptoManager.importPublicKey(contact.publicKeyString)
-                    val isMatch = contactPublicKey.encoded.contentEquals(senderPublicKey.encoded)
-                    android.util.Log.d("ScanQRActivity", "Comparing contact ${contact.name}: ${if (isMatch) "MATCH" else "no match"}")
-                    isMatch
-                } catch (e: Exception) {
-                    android.util.Log.e("ScanQRActivity", "Error comparing public keys for contact ${contact.name}: ${e.message}")
-                    false
-                }
-            }
+            // Verify that the sender contact exists
+            val contacts = dataManager.loadContacts()
+            val senderContact = contacts.find { it.name == senderName }
             
             if (senderContact != null) {
                 android.util.Log.d("ScanQRActivity", "Found sender contact: ${senderContact.name}")
                 val userName = dataManager.getUserName()
                 android.util.Log.d("ScanQRActivity", "Current user name: $userName")
+                
+                // Get the sender's public key for verification
+                val senderPublicKey = getSenderPublicKey(signedMessage)
+                if (senderPublicKey == null) {
+                    android.util.Log.e("ScanQRActivity", "Could not get sender public key")
+                    showError("⚠️ Could not verify message sender")
+                    return
+                }
                 
                 val receivedMessage = Message(
                     id = generateSecureId(),
@@ -357,7 +357,7 @@ class ScanQRActivity : AppCompatActivity() {
                 android.util.Log.d("ScanQRActivity", "Created received message with ID: ${receivedMessage.id}")
                 
                 // SECURITY: Verify and add message with cryptographic signature verification
-                val wasVerified = dataManager.verifyAndAddMessage(receivedMessage, senderPublicKey)
+                val wasVerified = dataManager.verifyAndAddMessage(receivedMessage, signedMessage, senderPublicKey)
                 
                 android.util.Log.d("ScanQRActivity", "Message verification result: $wasVerified")
                 
@@ -366,37 +366,82 @@ class ScanQRActivity : AppCompatActivity() {
                     showError("⚠️ Message authenticity verification failed")
                 } else {
                     android.util.Log.d("ScanQRActivity", "Message saved successfully to conversation history")
+                    
+                    // Stop camera to prevent further scanning
+                    stopCamera()
+                    
+                    // Show success message and close after delay
+                    showSuccess("Message received and saved successfully!")
+                    binding.root.postDelayed({
+                        finish()
+                    }, 3000)
                 }
                 
             } else {
-                android.util.Log.e("ScanQRActivity", "Could not find sender contact for public key")
-                showError("⚠️ Could not identify message sender")
+                android.util.Log.e("ScanQRActivity", "Could not find sender contact: $senderName")
+                showError("⚠️ Could not identify message sender: $senderName")
+                
+                // Stop camera to prevent further scanning
+                stopCamera()
+                
+                // Close after delay
+                binding.root.postDelayed({
+                    finish()
+                }, 3000)
             }
         } catch (e: Exception) {
             android.util.Log.e("ScanQRActivity", "Error saving received message: ${e.message}", e)
             showError("Failed to save message: ${e.message}")
+            
+            // Stop camera to prevent further scanning
+            stopCamera()
+            
+            // Close after delay
+            binding.root.postDelayed({
+                finish()
+            }, 3000)
         }
     }
     
-    private fun getSenderPublicKey(_signedMessage: CryptoManager.SignedEncryptedMessage): PublicKey? {
-        // TODO: Extract sender information from the message and look up their public key
-        // For now, we'll need to implement a way to identify the sender
-        // This could be done by including sender info in the signed message
+    private fun getSenderPublicKey(signedMessage: CryptoManager.SignedEncryptedMessage): PublicKey? {
         return try {
-            android.util.Log.d("ScanQRActivity", "Looking up sender public key from contacts")
-            // For demo purposes, try to find any contact's public key
+            android.util.Log.d("ScanQRActivity", "Extracting sender information from signed message")
+            
+            // Extract sender information from the encrypted message
+            val senderName = signedMessage.encryptedMessage.senderName
+            val senderPublicKeyHash = signedMessage.encryptedMessage.senderPublicKeyHash
+            
+            android.util.Log.d("ScanQRActivity", "Message sender: $senderName")
+            android.util.Log.d("ScanQRActivity", "Sender public key hash: $senderPublicKeyHash")
+            
+            // Find the sender contact by name and verify public key hash
             val contacts = dataManager.loadContacts()
             android.util.Log.d("ScanQRActivity", "Found ${contacts.size} contacts to check")
             
-            if (contacts.isNotEmpty()) {
-                val firstContact = contacts.first()
-                android.util.Log.d("ScanQRActivity", "Using first contact: ${firstContact.name}")
-                val publicKey = cryptoManager.importPublicKey(firstContact.publicKeyString)
-                android.util.Log.d("ScanQRActivity", "Successfully imported public key for ${firstContact.name}")
-                publicKey
+            val senderContact = contacts.find { contact ->
+                try {
+                    val contactPublicKey = cryptoManager.importPublicKey(contact.publicKeyString)
+                    val contactPublicKeyHash = java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(contactPublicKey.encoded)
+                        .let { android.util.Base64.encodeToString(it, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP) }
+                    
+                    val isMatch = contact.name == senderName && contactPublicKeyHash == senderPublicKeyHash
+                    android.util.Log.d("ScanQRActivity", "Comparing contact ${contact.name}: ${if (isMatch) "MATCH" else "no match"}")
+                    isMatch
+                } catch (e: Exception) {
+                    android.util.Log.e("ScanQRActivity", "Error comparing public keys for contact ${contact.name}: ${e.message}")
+                    false
+                }
+            }
+            
+            if (senderContact != null) {
+                android.util.Log.d("ScanQRActivity", "Found matching sender contact: ${senderContact.name}")
+                val publicKey = cryptoManager.importPublicKey(senderContact.publicKeyString)
+                android.util.Log.d("ScanQRActivity", "Successfully imported public key for ${senderContact.name}")
+                return publicKey
             } else {
-                android.util.Log.e("ScanQRActivity", "No contacts found")
-                null
+                android.util.Log.e("ScanQRActivity", "No matching contact found for sender: $senderName")
+                return null
             }
         } catch (e: Exception) {
             android.util.Log.e("ScanQRActivity", "Error in getSenderPublicKey: ${e.message}", e)
@@ -406,21 +451,42 @@ class ScanQRActivity : AppCompatActivity() {
     
     private fun importPublicKey(qrContent: String) {
         try {
+            android.util.Log.d("ScanQRActivity", "Starting public key import process")
+            android.util.Log.d("ScanQRActivity", "QR content length: ${qrContent.length}")
+            
             val publicKeyData = qrCodeManager.parsePublicKeyData(qrContent)
             
             if (publicKeyData != null) {
+                android.util.Log.d("ScanQRActivity", "Successfully parsed public key data")
+                android.util.Log.d("ScanQRActivity", "Contact name: ${publicKeyData.contactName}")
+                android.util.Log.d("ScanQRActivity", "Public key length: ${publicKeyData.publicKey.length}")
+                android.util.Log.d("ScanQRActivity", "Timestamp: ${publicKeyData.timestamp}")
+                
+                // SECURITY: Validate timestamp before processing
+                val timestampValidation = com.qrypteye.app.data.ContactValidator.validateTimestamp(
+                    publicKeyData.timestamp, "public key"
+                )
+                if (timestampValidation !is com.qrypteye.app.data.ContactValidator.TimestampValidationResult.Valid) {
+                    android.util.Log.w("ScanQRActivity", "Timestamp validation failed: ${timestampValidation.message}")
+                    showError("⚠️ ${timestampValidation.message}")
+                    isProcessingQR = false
+                    return
+                }
+                
                 // SECURITY: Check for replay attacks on public key import
                 val currentTime = System.currentTimeMillis()
                 val maxAge = 24 * 60 * 60 * 1000L // 24 hours
                 val maxFuture = 5 * 60 * 1000L // 5 minutes for clock skew
                 
                 if (currentTime - publicKeyData.timestamp > maxAge) {
+                    android.util.Log.w("ScanQRActivity", "Replay attack detected: Public key QR code is too old")
                     showError("⚠️ Replay attack detected: Public key QR code is too old")
                     isProcessingQR = false
                     return
                 }
                 
                 if (publicKeyData.timestamp - currentTime > maxFuture) {
+                    android.util.Log.w("ScanQRActivity", "Invalid timestamp: Public key QR code is from the future")
                     showError("⚠️ Invalid timestamp: Public key QR code is from the future")
                     isProcessingQR = false
                     return
@@ -428,48 +494,63 @@ class ScanQRActivity : AppCompatActivity() {
                 
                 // Create contact from public key data with comprehensive validation
                 val contact = try {
+                    android.util.Log.d("ScanQRActivity", "Attempting to create contact with original public key")
                     Contact.createContactFromString(
                         name = publicKeyData.contactName,
                         publicKeyString = publicKeyData.publicKey
                     )
                 } catch (e: IllegalArgumentException) {
+                    android.util.Log.w("ScanQRActivity", "Initial contact creation failed: ${e.message}")
+                    android.util.Log.d("ScanQRActivity", "Attempting key repair...")
+                    
                     // Attempt to repair the key if initial validation fails
-                    val repairResult = ContactValidator.attemptKeyRepair(publicKeyData.publicKey)
-                    if (repairResult is ContactValidator.RepairResult.Repaired) {
+                    val repairResult = com.qrypteye.app.data.ContactValidator.attemptKeyRepair(publicKeyData.publicKey)
+                    android.util.Log.d("ScanQRActivity", "Key repair result: ${repairResult.message}")
+                    
+                    if (repairResult is com.qrypteye.app.data.ContactValidator.RepairResult.Repaired) {
                         try {
+                            android.util.Log.d("ScanQRActivity", "Attempting to create contact with repaired key")
                             Contact.createContactFromString(
                                 name = publicKeyData.contactName,
                                 publicKeyString = repairResult.repairedKey
                             ).also {
+                                android.util.Log.d("ScanQRActivity", "Successfully created contact with repaired key")
                                 showSuccess("Public key repaired using ${repairResult.encodingUsed} encoding")
                             }
                         } catch (e2: IllegalArgumentException) {
+                            android.util.Log.e("ScanQRActivity", "Contact creation with repaired key failed: ${e2.message}")
                             showError("Invalid public key format: ${e2.message}")
                             isProcessingQR = false
                             return
                         }
                     } else {
+                        android.util.Log.e("ScanQRActivity", "Key repair failed: ${repairResult.message}")
                         showError("Invalid public key format: ${e.message}")
                         isProcessingQR = false
                         return
                     }
                 }
                 
+                android.util.Log.d("ScanQRActivity", "Contact created successfully, saving to data manager")
+                
                 // Save contact to persistent storage
-                dataManager.addContact(contact)
+                try {
+                    dataManager.addContact(contact)
+                    android.util.Log.d("ScanQRActivity", "Contact saved successfully to data manager")
+                } catch (e: Exception) {
+                    android.util.Log.e("ScanQRActivity", "Failed to save contact: ${e.message}", e)
+                    showError("Failed to save contact: ${e.message}")
+                    isProcessingQR = false
+                    return
+                }
                 
-                showSuccess("Public key imported for ${publicKeyData.contactName}")
-                
-                // Also show a Toast as backup
-                Toast.makeText(this, "Public key imported for ${publicKeyData.contactName}", Toast.LENGTH_LONG).show()
+                // Stop camera to prevent further scanning
+                stopCamera()
                 
                 // Return result to calling activity
                 val resultIntent = Intent()
                 resultIntent.putExtra("contact_name", publicKeyData.contactName)
                 setResult(RESULT_OK, resultIntent)
-                
-                // Stop camera to prevent further scanning
-                stopCamera()
                 
                 // Close the activity after a short delay
                 binding.root.postDelayed({
@@ -477,10 +558,29 @@ class ScanQRActivity : AppCompatActivity() {
                 }, 2000)
                 
             } else {
-                showError("Failed to parse public key data")
+                android.util.Log.e("ScanQRActivity", "Failed to parse public key data from QR content")
+                showError("Failed to parse public key data from QR code")
+                
+                // Stop camera to prevent further scanning
+                stopCamera()
+                
+                // Close after delay
+                binding.root.postDelayed({
+                    finish()
+                }, 3000)
             }
         } catch (e: Exception) {
-            showError("Failed to import public key: ${e.message}")
+            android.util.Log.e("ScanQRActivity", "Error during public key import: ${e.message}", e)
+            showError("Error importing public key: ${e.message}")
+            
+            // Stop camera to prevent further scanning
+            stopCamera()
+            
+            // Close after delay
+            binding.root.postDelayed({
+                finish()
+            }, 3000)
+        } finally {
             isProcessingQR = false
         }
     }

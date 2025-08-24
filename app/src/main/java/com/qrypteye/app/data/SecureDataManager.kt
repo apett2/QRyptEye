@@ -103,9 +103,10 @@ class SecureDataManager(private val context: Context) {
             keyGenerator.init(256) // 256-bit key
             val newKey = keyGenerator.generateKey()
             
-            // Store the key material securely (encrypted with field encryption key, no integrity protection)
+            // Store the key material securely (encrypted with field encryption key, with fixed timestamp)
             val keyMaterial = android.util.Base64.encodeToString(newKey.encoded, BASE64_FLAGS)
-            val encryptedKeyMaterial = encryptField(keyMaterial) // Use simple encryption without AAD
+            val keyTimestamp = 0L // Use fixed timestamp for metadata signing key storage
+            val encryptedKeyMaterial = encryptFieldWithIntegrity(keyMaterial, "metadata_signing_key", "metadata", keyTimestamp)
             securePrefs.edit().putString(keyAlias, encryptedKeyMaterial).apply()
             
             android.util.Log.d("SecureDataManager", "New metadata signing key generated and stored")
@@ -115,7 +116,8 @@ class SecureDataManager(private val context: Context) {
             try {
                 android.util.Log.d("SecureDataManager", "Loading existing metadata signing key")
                 val encryptedKeyMaterial = keyData
-                val keyMaterial = decryptField(encryptedKeyMaterial) // Use simple decryption without AAD
+                val keyTimestamp = 0L // Use same fixed timestamp for metadata signing key decryption
+                val keyMaterial = decryptFieldWithIntegrity(encryptedKeyMaterial, "metadata_signing_key", "metadata", keyTimestamp)
                 val keyBytes = android.util.Base64.decode(keyMaterial, BASE64_FLAGS)
                 val key = javax.crypto.spec.SecretKeySpec(keyBytes, "HmacSHA256")
                 android.util.Log.d("SecureDataManager", "Existing metadata signing key loaded successfully")
@@ -132,7 +134,8 @@ class SecureDataManager(private val context: Context) {
                 
                 // Store the new key
                 val keyMaterial = android.util.Base64.encodeToString(newKey.encoded, BASE64_FLAGS)
-                val encryptedKeyMaterial = encryptField(keyMaterial) // Use simple encryption without AAD
+                val keyTimestamp = 0L // Use fixed timestamp for metadata signing key storage
+                val encryptedKeyMaterial = encryptFieldWithIntegrity(keyMaterial, "metadata_signing_key", "metadata", keyTimestamp)
                 securePrefs.edit().putString(keyAlias, encryptedKeyMaterial).apply()
                 
                 android.util.Log.d("SecureDataManager", "Metadata signing key regenerated due to decryption failure")
@@ -394,37 +397,23 @@ class SecureDataManager(private val context: Context) {
     /**
      * Encrypt sensitive field data (legacy method for backward compatibility)
      * 
-     * @deprecated Use encryptFieldWithIntegrity() for new data
+     * @deprecated Use encryptFieldWithIntegrity() for better security
      */
     @Deprecated("Use encryptFieldWithIntegrity() for better security")
     private fun encryptField(data: String): String {
-        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, fieldEncryptionKey)
-        val encryptedBytes = cipher.doFinal(data.toByteArray())
-        val iv = cipher.iv
-        
-        // Combine IV and encrypted data
-        val combined = iv + encryptedBytes
-        return android.util.Base64.encodeToString(combined, BASE64_FLAGS)
+        // Use the secure method instead
+        return encryptFieldWithIntegrity(data, "legacy_field", "legacy", System.currentTimeMillis())
     }
     
     /**
      * Decrypt sensitive field data (legacy method for backward compatibility)
      * 
-     * @deprecated Use decryptFieldWithIntegrity() for new data
+     * @deprecated Use decryptFieldWithIntegrity() for better security
      */
     @Deprecated("Use decryptFieldWithIntegrity() for better security")
     private fun decryptField(encryptedData: String): String {
-        val combined = android.util.Base64.decode(encryptedData, BASE64_FLAGS)
-        val iv = combined.copyOfRange(0, 12) // 96-bit IV for GCM
-        val encryptedBytes = combined.copyOfRange(12, combined.size)
-        
-        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-        val ivSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, fieldEncryptionKey, ivSpec)
-        
-        val decryptedBytes = cipher.doFinal(encryptedBytes)
-        return String(decryptedBytes)
+        // Use the secure method instead
+        return decryptFieldWithIntegrity(encryptedData, "legacy_field", "legacy", System.currentTimeMillis())
     }
     
     // Contact management (encrypted storage with field-level encryption)

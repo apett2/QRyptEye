@@ -111,6 +111,12 @@ data class Contact(
          * @throws IllegalArgumentException if the public key string is invalid
          */
         fun createContactFromString(name: String, publicKeyString: String): Contact {
+            // Validate the contact name first
+            val nameValidation = com.qrypteye.app.data.ContactValidator.validateContactName(name)
+            if (nameValidation !is com.qrypteye.app.data.ContactValidator.ContactNameValidationResult.Valid) {
+                throw IllegalArgumentException("Invalid contact name: ${nameValidation.message}")
+            }
+            
             // Validate the public key string
             val validation = validatePublicKey(publicKeyString)
             if (validation !is ValidationResult.Valid) {
@@ -118,7 +124,7 @@ data class Contact(
             }
             
             return Contact(
-                name = name,
+                name = nameValidation.normalizedName,
                 publicKeyString = publicKeyString
             )
         }

@@ -61,6 +61,9 @@ class SenderTimestampTracker {
     // Thread-safe storage for key timestamps (for cleanup)
     private val keyTimestamps = ConcurrentHashMap<String, Long>()
     
+    // Reference to the main replay protection system
+    private val replayProtection = ReplayProtection()
+    
     /**
      * Validate timestamp and message ID for a sender and update tracking
      * 
@@ -69,6 +72,7 @@ class SenderTimestampTracker {
      * 2. Checking for message ID reuse (prevents exact message replay)
      * 3. Validating clock drift (prevents future message attacks)
      * 4. Supporting key rotation (maintains replay protection across key changes)
+     * 5. Using consolidated replay protection system
      * 
      * @param senderPublicKey The sender's public key
      * @param messageId The unique message identifier
@@ -91,21 +95,33 @@ class SenderTimestampTracker {
         // Update key-to-contact mapping for key rotation support
         updateKeyMapping(senderHash, trackingContactId, currentTime)
         
+        // SECURITY: Use consolidated replay protection for message ID validation
+        val tempMessage = com.qrypteye.app.data.Message(
+            id = messageId,
+            senderName = "temp_sender",
+            recipientName = "temp_recipient",
+            content = "temp_content",
+            timestamp = messageTimestamp,
+            isOutgoing = false,
+            isRead = false
+        )
+        
+        if (replayProtection.isReplayAttack(tempMessage)) {
+            android.util.Log.w("SenderTimestampTracker", "Replay attack detected via consolidated system")
+            return false
+        }
+        
         // Check for timestamp regression (per contact, not per key)
         val lastTimestamp = contactTimestamps[trackingContactId]
         if (lastTimestamp != null && messageTimestamp <= lastTimestamp) {
+            android.util.Log.w("SenderTimestampTracker", "Timestamp regression detected")
             return false // Timestamp regression detected
         }
         
         // Check for excessive clock drift
         if (Math.abs(messageTimestamp - currentTime) > ALLOWED_CLOCK_DRIFT_MS) {
+            android.util.Log.w("SenderTimestampTracker", "Excessive clock drift detected")
             return false // Clock drift too large
-        }
-        
-        // Check for message ID reuse (replay attack) - per contact, not per key
-        val recentMessages = contactRecentMessages.getOrPut(trackingContactId) { mutableSetOf() }
-        if (recentMessages.contains(messageId)) {
-            return false // Message ID already seen (replay attack)
         }
         
         // Check if we need to cleanup old entries
@@ -119,6 +135,7 @@ class SenderTimestampTracker {
             contactTimestamps[trackingContactId] = messageTimestamp
             
             // Update message ID tracking (per contact)
+            val recentMessages = contactRecentMessages.getOrPut(trackingContactId) { mutableSetOf() }
             synchronized(recentMessages) {
                 // Add new message ID
                 recentMessages.add(messageId)

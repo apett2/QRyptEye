@@ -18,6 +18,20 @@ class QRCodeManager {
         private const val MARGIN = 0
         private val gson = Gson()
         
+        // Security validation constants
+        private const val MIN_QR_CONTENT_LENGTH = 1  // Allow single character messages
+        private const val MAX_SIGNED_MESSAGE_LENGTH = 425  // Experimentally determined maximum for MESSAGE CONTENT only
+        private const val MAX_SIGNED_MESSAGE_QR_LENGTH = 2000  // Higher limit for signed message QR codes (includes encryption metadata)
+        private const val MAX_PUBLIC_KEY_QR_LENGTH = 5000  // Higher limit for public key QR codes
+        private const val MAX_PUBLIC_KEY_LENGTH = 5000
+        private const val MAX_NAME_LENGTH = 100
+        private const val MAX_ENCRYPTED_FIELD_SIZE = 1024 * 1024 // 1MB
+        private const val MAX_IV_SIZE = 1024 // 1KB
+        private const val MAX_AUTH_TAG_SIZE = 1024 // 1KB
+        private const val MAX_HASH_SIZE = 1024 // 1KB
+        private const val MAX_SIGNATURE_SIZE = 1024 // 1KB
+        private const val MAX_FUTURE_TIMESTAMP_MS = 5 * 60 * 1000L // 5 minutes
+        
         // QR Code Version 25 capacities (512x512 pixels) in bytes
         // Based on actual QR code specifications for binary data
         private const val QR_V25_L = 1273  // Low error correction
@@ -39,7 +53,8 @@ class QRCodeManager {
         
         // Recommended capacity using Version 25 with Medium error correction
         // Conservative estimate accounting for JSON overhead and encryption
-        val MAX_MESSAGE_LENGTH = calculateMaxMessageLength()
+        // Based on experimental testing showing 425 characters is the practical maximum
+        val MAX_MESSAGE_LENGTH = 425
         
         private fun calculateMaxMessageLength(): Int {
             // Available bytes for actual message content
@@ -138,23 +153,30 @@ class QRCodeManager {
      */
     fun parseSignedEncryptedMessage(qrContent: String): CryptoManager.SignedEncryptedMessage? {
         return try {
-            // Validate input length to prevent DoS attacks
-            if (qrContent.length > 10000) {
+            // 1. Type-specific input validation
+            if (!isValidQRContent(qrContent, QRCodeType.SIGNED_ENCRYPTED_MESSAGE)) {
+                android.util.Log.w("QRCodeManager", "QR content validation failed for signed message type")
                 return null
             }
             
+            // 2. JSON structure validation
+            if (!isValidJsonWithRequiredFields(qrContent, listOf("encryptedMessage", "signature"))) {
+                android.util.Log.w("QRCodeManager", "JSON structure validation failed")
+                return null
+            }
+            
+            // 3. Parse JSON
             val result = gson.fromJson(qrContent, CryptoManager.SignedEncryptedMessage::class.java)
             
-            // Validate parsed result
-            if (result?.encryptedMessage?.encryptedData.isNullOrEmpty() ||
-                result?.encryptedMessage?.encryptedKey.isNullOrEmpty() ||
-                result?.encryptedMessage?.iv.isNullOrEmpty() ||
-                result?.signature.isNullOrEmpty()) {
+            // 4. Post-parse validation
+            if (!isValidSignedMessage(result)) {
+                android.util.Log.w("QRCodeManager", "Signed message validation failed")
                 return null
             }
             
             result
         } catch (e: Exception) {
+            android.util.Log.e("QRCodeManager", "Failed to parse signed message: ${e.message}")
             null
         }
     }
@@ -164,20 +186,39 @@ class QRCodeManager {
      */
     fun parsePublicKeyData(qrContent: String): PublicKeyData? {
         return try {
-            // Validate input length to prevent DoS attacks
-            if (qrContent.length > 5000) {
+            android.util.Log.d("QRCodeManager", "Starting public key data parsing")
+            android.util.Log.d("QRCodeManager", "QR content length: ${qrContent.length}")
+            android.util.Log.d("QRCodeManager", "QR content preview: ${qrContent.take(100)}${if (qrContent.length > 100) "..." else ""}")
+            
+            // 1. Type-specific input validation
+            if (!isValidQRContent(qrContent, QRCodeType.PUBLIC_KEY)) {
+                android.util.Log.w("QRCodeManager", "QR content validation failed for public key type")
                 return null
             }
             
+            // 2. JSON structure validation
+            if (!isValidJsonWithRequiredFields(qrContent, listOf("publicKey", "contactName", "timestamp"))) {
+                android.util.Log.w("QRCodeManager", "JSON structure validation failed")
+                return null
+            }
+            
+            // 3. Parse JSON
+            android.util.Log.d("QRCodeManager", "Attempting JSON parsing")
             val result = gson.fromJson(qrContent, PublicKeyData::class.java)
+            android.util.Log.d("QRCodeManager", "JSON parsing successful")
             
-            // Validate parsed result
-            if (result?.publicKey.isNullOrEmpty() || result?.contactName.isNullOrEmpty()) {
+            // 4. Post-parse validation
+            if (!isValidPublicKeyData(result)) {
+                android.util.Log.w("QRCodeManager", "Public key data validation failed")
                 return null
             }
             
+            android.util.Log.d("QRCodeManager", "Public key data parsing completed successfully")
             result
         } catch (e: Exception) {
+            android.util.Log.e("QRCodeManager", "Failed to parse public key data: ${e.message}", e)
+            android.util.Log.e("QRCodeManager", "Exception type: ${e.javaClass.simpleName}")
+            android.util.Log.e("QRCodeManager", "QR content that failed: ${qrContent}")
             null
         }
     }
@@ -332,5 +373,243 @@ class QRCodeManager {
         MEDIUM,     // Good balance
         LARGE,      // May be harder to scan
         TOO_LARGE   // Exceeds capacity
+    }
+
+    /**
+     * Detect the type of QR code content
+     * 
+     * @param qrContent The QR code content to analyze
+     * @return QRCodeType indicating the content type
+     */
+    private fun detectQRContentType(qrContent: String): QRCodeType {
+        return try {
+            val jsonObject = gson.fromJson(qrContent, Map::class.java)
+            when {
+                jsonObject.containsKey("encryptedMessage") && jsonObject.containsKey("signature") -> QRCodeType.SIGNED_ENCRYPTED_MESSAGE
+                jsonObject.containsKey("publicKey") && jsonObject.containsKey("contactName") -> QRCodeType.PUBLIC_KEY
+                else -> QRCodeType.UNKNOWN
+            }
+        } catch (e: Exception) {
+            QRCodeType.UNKNOWN
+        }
+    }
+
+    /**
+     * Validate QR code content for security and format
+     * 
+     * @param qrContent The QR code content to validate
+     * @param expectedType Optional expected QR code type for more specific validation
+     * @return true if content is valid, false otherwise
+     */
+    private fun isValidQRContent(qrContent: String, expectedType: QRCodeType? = null): Boolean {
+        // 1. Basic length validation (allow single character messages)
+        if (qrContent.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "QR content cannot be empty")
+            return false
+        }
+        
+        // 2. Determine content type and appropriate max length
+        val contentType = expectedType ?: detectQRContentType(qrContent)
+        val maxLength = when (contentType) {
+            QRCodeType.SIGNED_ENCRYPTED_MESSAGE -> MAX_SIGNED_MESSAGE_QR_LENGTH
+            QRCodeType.PUBLIC_KEY -> MAX_PUBLIC_KEY_QR_LENGTH
+            QRCodeType.UNKNOWN -> MAX_PUBLIC_KEY_QR_LENGTH // Be permissive for unknown types
+        }
+        
+        // 3. Maximum length validation (based on content type)
+        if (qrContent.length > maxLength) {
+            android.util.Log.w("QRCodeManager", "QR content too long: ${qrContent.length} (max: $maxLength for type: $contentType)")
+            return false
+        }
+        
+        // 4. Character encoding validation
+        if (!qrContent.all { it.code in 32..126 || it.code in 160..255 || it.code in 0x2000..0x206F }) {
+            android.util.Log.w("QRCodeManager", "QR content contains unsupported characters")
+            return false
+        }
+        
+        // 5. Malicious content detection
+        val suspiciousPatterns = listOf(
+            Regex("script", RegexOption.IGNORE_CASE),
+            Regex("javascript:", RegexOption.IGNORE_CASE),
+            Regex("data:", RegexOption.IGNORE_CASE),
+            Regex("vbscript:", RegexOption.IGNORE_CASE),
+            Regex("on\\w+\\s*=", RegexOption.IGNORE_CASE),
+            Regex("<\\w+[^>]*>", RegexOption.IGNORE_CASE), // HTML tags
+            Regex("\\b(union|select|insert|update|delete|drop|create|alter)\\b", RegexOption.IGNORE_CASE) // SQL keywords
+        )
+        
+        if (suspiciousPatterns.any { it.containsMatchIn(qrContent) }) {
+            android.util.Log.w("QRCodeManager", "QR content contains suspicious patterns")
+            return false
+        }
+        
+        android.util.Log.d("QRCodeManager", "QR content validation passed for type: $contentType")
+        return true
+    }
+    
+    /**
+     * Validate JSON format and structure
+     * 
+     * @param content The content to validate as JSON
+     * @param requiredFields List of required top-level fields
+     * @return true if JSON is valid and contains required fields, false otherwise
+     */
+    private fun isValidJsonWithRequiredFields(content: String, requiredFields: List<String>): Boolean {
+        return try {
+            android.util.Log.d("QRCodeManager", "Validating JSON structure with required fields: $requiredFields")
+            val jsonObject = gson.fromJson(content, Map::class.java)
+            android.util.Log.d("QRCodeManager", "JSON parsed successfully, checking required fields")
+            
+            val missingFields = requiredFields.filter { !jsonObject.containsKey(it) }
+            if (missingFields.isNotEmpty()) {
+                android.util.Log.w("QRCodeManager", "Missing required fields: $missingFields")
+                return false
+            }
+            
+            android.util.Log.d("QRCodeManager", "All required fields present")
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("QRCodeManager", "Invalid JSON format: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Validate signed message structure and content
+     * 
+     * @param message The signed message to validate
+     * @return true if message is valid, false otherwise
+     */
+    private fun isValidSignedMessage(message: CryptoManager.SignedEncryptedMessage?): Boolean {
+        if (message == null) return false
+        
+        val encrypted = message.encryptedMessage
+        
+        // Validate all required fields individually
+        if (encrypted.encryptedData.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: encryptedData is empty")
+            return false
+        }
+        
+        if (encrypted.encryptedData.length > MAX_ENCRYPTED_FIELD_SIZE) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: encryptedData too large")
+            return false
+        }
+        
+        if (encrypted.encryptedKey.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: encryptedKey is empty")
+            return false
+        }
+        
+        if (encrypted.encryptedKey.length > MAX_ENCRYPTED_FIELD_SIZE) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: encryptedKey too large")
+            return false
+        }
+        
+        if (encrypted.iv.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: iv is empty")
+            return false
+        }
+        
+        if (encrypted.iv.length > MAX_IV_SIZE) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: iv too large")
+            return false
+        }
+        
+        if (encrypted.authTag.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: authTag is empty")
+            return false
+        }
+        
+        if (encrypted.authTag.length > MAX_AUTH_TAG_SIZE) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: authTag too large")
+            return false
+        }
+        
+        if (encrypted.senderName.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: senderName is empty")
+            return false
+        }
+        
+        if (encrypted.senderName.length > MAX_NAME_LENGTH) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: senderName too long")
+            return false
+        }
+        
+        if (encrypted.senderPublicKeyHash.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: senderPublicKeyHash is empty")
+            return false
+        }
+        
+        if (encrypted.senderPublicKeyHash.length > MAX_HASH_SIZE) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: senderPublicKeyHash too large")
+            return false
+        }
+        
+        if (message.signature.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: signature is empty")
+            return false
+        }
+        
+        if (message.signature.length > MAX_SIGNATURE_SIZE) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: signature too large")
+            return false
+        }
+        
+        if (encrypted.timestamp <= 0L) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: timestamp is invalid")
+            return false
+        }
+        
+        if (encrypted.timestamp > System.currentTimeMillis() + MAX_FUTURE_TIMESTAMP_MS) {
+            android.util.Log.w("QRCodeManager", "Signed message validation failed: timestamp too far in future")
+            return false
+        }
+        
+        return true
+    }
+    
+    /**
+     * Validate public key data structure and content
+     * 
+     * @param data The public key data to validate
+     * @return true if data is valid, false otherwise
+     */
+    private fun isValidPublicKeyData(data: PublicKeyData?): Boolean {
+        if (data == null) return false
+        
+        // Validate all required fields individually
+        if (data.publicKey.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Public key data validation failed: publicKey is empty")
+            return false
+        }
+        
+        if (data.publicKey.length > MAX_ENCRYPTED_FIELD_SIZE) {
+            android.util.Log.w("QRCodeManager", "Public key data validation failed: publicKey too large")
+            return false
+        }
+        
+        if (data.contactName.isEmpty()) {
+            android.util.Log.w("QRCodeManager", "Public key data validation failed: contactName is empty")
+            return false
+        }
+        
+        if (data.contactName.length > MAX_NAME_LENGTH) {
+            android.util.Log.w("QRCodeManager", "Public key data validation failed: contactName too long")
+            return false
+        }
+        
+        if (data.timestamp <= 0L) {
+            android.util.Log.w("QRCodeManager", "Public key data validation failed: timestamp is invalid")
+            return false
+        }
+        
+        if (data.timestamp > System.currentTimeMillis() + MAX_FUTURE_TIMESTAMP_MS) {
+            android.util.Log.w("QRCodeManager", "Public key data validation failed: timestamp too far in future")
+            return false
+        }
+        
+        return true
     }
 } 

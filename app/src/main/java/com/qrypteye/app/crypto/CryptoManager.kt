@@ -88,7 +88,9 @@ class CryptoManager {
         val encryptedKey: String,
         val iv: String,
         val authTag: String,
-        val timestamp: Long
+        val timestamp: Long,
+        val senderName: String,
+        val senderPublicKeyHash: String
     )
     
     /**
@@ -119,19 +121,21 @@ class CryptoManager {
     }
     
     /**
-     * Create canonical JSON string for signature context
+     * Create canonical JSON signature context to prevent ambiguity attacks
      * 
      * SECURITY: This method creates unambiguous serialization to prevent
      * signature ambiguity attacks. The JSON format ensures proper field separation
      * and prevents malicious data injection through string concatenation.
      */
-    private fun createSignatureContext(encryptedMessage: EncryptedMessage): String {
+    fun createSignatureContext(encryptedMessage: EncryptedMessage): String {
         val context = SignatureContext(
             encryptedData = encryptedMessage.encryptedData,
             encryptedKey = encryptedMessage.encryptedKey,
             iv = encryptedMessage.iv,
             authTag = encryptedMessage.authTag,
-            timestamp = encryptedMessage.timestamp
+            timestamp = encryptedMessage.timestamp,
+            senderName = encryptedMessage.senderName,
+            senderPublicKeyHash = encryptedMessage.senderPublicKeyHash
         )
         return canonicalGson.toJson(context)
     }
@@ -152,7 +156,12 @@ class CryptoManager {
     /**
      * Encrypt a message using hybrid encryption
      */
-    fun encryptMessage(message: String, recipientPublicKey: PublicKey): EncryptedMessage {
+    fun encryptMessage(
+        message: String, 
+        recipientPublicKey: PublicKey, 
+        senderName: String, 
+        senderPublicKey: PublicKey
+    ): EncryptedMessage {
         // Generate a random AES key
         val keyGenerator = KeyGenerator.getInstance("AES")
         keyGenerator.init(AES_KEY_SIZE)
@@ -164,12 +173,19 @@ class CryptoManager {
         // Encrypt the AES key with recipient's RSA public key
         val encryptedAESKey = encryptWithRSA(aesKey.encoded, recipientPublicKey)
         
+        // Create hash of sender's public key for verification
+        val senderPublicKeyHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(senderPublicKey.encoded)
+            .let { Base64.encodeToString(it, BASE64_FLAGS) }
+        
         val encryptedMessage = EncryptedMessage(
             encryptedData = Base64.encodeToString(encryptedData.encryptedBytes, BASE64_FLAGS),
             encryptedKey = Base64.encodeToString(encryptedAESKey, BASE64_FLAGS),
             iv = Base64.encodeToString(encryptedData.iv, BASE64_FLAGS),
             authTag = Base64.encodeToString(encryptedData.authTag, BASE64_FLAGS),
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            senderName = senderName,
+            senderPublicKeyHash = senderPublicKeyHash
         )
         
         // Validate encrypted message size
@@ -241,39 +257,48 @@ class CryptoManager {
     }
     
     /**
-     * Sign data with private key
-     */
-    fun signData(data: String, privateKey: PrivateKey): String {
-        val signature = Signature.getInstance(SIGNATURE_ALGORITHM)
-        signature.initSign(privateKey)
-        signature.update(data.toByteArray())
-        val signatureBytes = signature.sign()
-        val signatureString = Base64.encodeToString(signatureBytes, BASE64_FLAGS)
-        
-        // Validate signature size
-        if (signatureString.length > MAX_SIGNATURE_SIZE) {
-            throw SecurityException("Generated signature exceeds size limit")
-        }
-        
-        return signatureString
-    }
-    
-    /**
-     * Verify signature with public key
+     * Verify signature of data
+     * 
+     * @param data The data that was signed
+     * @param signature The signature to verify
+     * @param publicKey The public key to verify with
+     * @return true if signature is valid, false otherwise
      */
     fun verifySignature(data: String, signature: String, publicKey: PublicKey): Boolean {
         return try {
-            // Validate signature size
-            if (signature.length > MAX_SIGNATURE_SIZE) {
-                return false
-            }
+            val signatureBytes = Base64.decode(signature, BASE64_FLAGS)
+            val dataBytes = data.toByteArray()
             
-            val sig = Signature.getInstance(SIGNATURE_ALGORITHM)
-            sig.initVerify(publicKey)
-            sig.update(data.toByteArray())
-            sig.verify(Base64.decode(signature, BASE64_FLAGS))
+            val signatureInstance = java.security.Signature.getInstance(SIGNATURE_ALGORITHM)
+            signatureInstance.initVerify(publicKey)
+            signatureInstance.update(dataBytes)
+            
+            signatureInstance.verify(signatureBytes)
         } catch (e: Exception) {
+            android.util.Log.e("CryptoManager", "Signature verification failed: ${e.message}")
             false
+        }
+    }
+    
+    /**
+     * Sign data with private key
+     * 
+     * @param data The data to sign
+     * @param privateKey The private key to sign with
+     * @return Base64 encoded signature
+     */
+    fun signData(data: String, privateKey: PrivateKey): String {
+        return try {
+            val dataBytes = data.toByteArray()
+            
+            val signatureInstance = java.security.Signature.getInstance(SIGNATURE_ALGORITHM)
+            signatureInstance.initSign(privateKey)
+            signatureInstance.update(dataBytes)
+            
+            val signatureBytes = signatureInstance.sign()
+            Base64.encodeToString(signatureBytes, BASE64_FLAGS)
+        } catch (e: Exception) {
+            throw SecurityException("Failed to sign data", e)
         }
     }
     
@@ -287,9 +312,11 @@ class CryptoManager {
     fun createSignedEncryptedMessage(
         message: String, 
         recipientPublicKey: PublicKey, 
-        senderPrivateKey: PrivateKey
+        senderPrivateKey: PrivateKey,
+        senderName: String,
+        senderPublicKey: PublicKey
     ): SignedEncryptedMessage {
-        val encryptedMessage = encryptMessage(message, recipientPublicKey)
+        val encryptedMessage = encryptMessage(message, recipientPublicKey, senderName, senderPublicKey)
         
         // Create canonical JSON signature context to prevent ambiguity attacks
         val messageData = createSignatureContext(encryptedMessage)
@@ -488,7 +515,9 @@ class CryptoManager {
         val encryptedKey: String,
         val iv: String,
         val authTag: String,  // GCM authentication tag for integrity verification
-        val timestamp: Long
+        val timestamp: Long,
+        val senderName: String,  // Add sender name for identification
+        val senderPublicKeyHash: String  // Add sender public key hash for verification
     )
     
     data class SignedEncryptedMessage(
