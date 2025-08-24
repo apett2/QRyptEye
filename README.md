@@ -1,6 +1,22 @@
 # QRyptEye 🔐
 
-A secure, end-to-end encrypted messaging application for Android that uses QR codes for message transmission. Built with enterprise-grade security features and cryptographic best practices.
+End-to-end encryption is great, but what if your endpoint is compromised? QRyptEye is an encrypted messaging app intended for installation on a fully offline device. Encryption and decryption occur offline, with cipher text transmitted to an online device via QR codes.
+
+## ⚠️ CAUTION
+
+This application is 100% vibe-coded and designed for educational and research purposes only. While it implements industry-standard cryptographic practices, it has not undergone formal security auditing. Use in production environments is not recommended without proper security review.
+
+To any cryptography, optical data transfer, or Android security experts: please play, test, refine, and improve. Maybe there is a foundation here for something cool.   
+
+## 🚀 Getting Started
+
+### Usage
+
+Plain text messages are composed in the QRyptEye app, installed on an offline device. The QRyptEye app encrypts the message and displays a QR code of the cipher text. The user then takes a photo of the QR code with their primary online device and sends that photo to their contact via the channel of their choice (email, text, social media, etc.). The recipient receives the photo of the QR code on their online device, then scans the QR code using QRyptEye installed on their offline device. The message is decrypted and plain text is displayed in the QRytEye app on the recipient's offline device. 
+
+In order to exchange messages, contacts must first exchange public keys. This can be done in the same fashion as messages, with photos of QR codes being sent via traditional channels, or it can be done in person for increased security. Initial public key exchange follows a trust-on-first-use model, meaning initial public key exchanges are not validated for authenticity. Exchanging public keys in-person mitigates the risk of intercepted or modified public keys during initial exchange.
+
+After initial public key exchange, all messages are cryptographically validated for authenticity.  
 
 ## 🔒 Security Features
 
@@ -42,19 +58,11 @@ A secure, end-to-end encrypted messaging application for Android that uses QR co
 
 ## 🔧 Technical Details
 
-### Message Flow
-1. **Compose**: User types message → Content validation → Encryption
-2. **QR Generation**: Signed encrypted message → QR code display
-3. **Scanning**: QR code scan → Content validation → Signature verification
-4. **Decryption**: Signature validation → Message decryption → Display
-
 ### Security Validations
 - **Input Sanitization**: XSS, SQL injection, script injection prevention
 - **Content Validation**: Character encoding, length limits, format checks
 - **Cryptographic Verification**: Signature validation, replay detection
-- **Timestamp Validation**: Clock drift protection, freshness verification
-
-## 🚀 Getting Started
+- **Timestamp Validation**: Clock drift protection, freshness verification 
 
 ### Prerequisites
 - Android Studio Arctic Fox or later
@@ -64,19 +72,13 @@ A secure, end-to-end encrypted messaging application for Android that uses QR co
 ### Installation
 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/QRyptEye.git
+git clone https://github.com/apett2/QRyptEye.git
 cd QRyptEye
 ```
 
 2. Open in Android Studio
 3. Build and run on device or emulator
 
-### Usage
-1. **Generate Keys**: First launch generates RSA key pair
-2. **Share Public Key**: Generate QR code containing your public key
-3. **Import Contacts**: Scan others' public key QR codes
-4. **Send Messages**: Compose → Encrypt → Generate QR → Share
-5. **Receive Messages**: Scan QR → Verify → Decrypt → Display
 
 ## 🧪 Testing
 
@@ -104,10 +106,6 @@ This project follows secure development practices:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Security Notice
-
-This application is designed for educational and research purposes. While it implements industry-standard cryptographic practices, it has not undergone formal security auditing. Use in production environments is not recommended without proper security review.
-
 ## 🔍 Security Auditing
 
 Security events are logged for:
@@ -117,10 +115,4 @@ Security events are logged for:
 - Replay attack detection
 - Input validation failures
 
-## 📞 Contact
-
-For security-related issues, please contact [security@example.com](mailto:security@example.com)
-
 ---
-
-**Built with ❤️ and 🔒 by [Your Name]**
