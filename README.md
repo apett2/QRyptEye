@@ -1,20 +1,33 @@
 # QRyptEye 🔐
 
-End-to-end encryption is great, but what if your endpoint is compromised? QRyptEye is an encrypted messaging app intended for installation on a fully offline device. Encryption and decryption occur offline, with cipher text transmitted to an online device via QR codes.
+End-to-end encryption is great, but what if your endpoint is compromised? 
+
+QRyptEye is an encrypted messaging app intended for installation on a secondary, fully offline device. Cipher text is transmitted with an online primary device via photos of QR codes. 
+
 
 ## ⚠️ CAUTION
 
 This application is 100% vibe-coded and designed for educational and research purposes only. While it implements industry-standard cryptographic practices, it has not undergone formal security auditing. Use in production environments is not recommended without proper security review.
 
-To any cryptography, optical data transfer, or Android security experts: please play, test, refine, and improve. Maybe there is a foundation here for something cool.   
-
 ## 🚀 Getting Started
 
 ### Usage
 
-Plain text messages are composed in the QRyptEye app, installed on an offline device. The QRyptEye app encrypts the message and displays a QR code of the cipher text. The user then takes a photo of the QR code with their primary online device and sends that photo to their contact via the channel of their choice (email, text, social media, etc.). The recipient receives the photo of the QR code on their online device, then scans the QR code using QRyptEye installed on their offline device. The message is decrypted and plain text is displayed in the QRytEye app on the recipient's offline device. 
+Install this app on a secondary device with all networking components disabled. 
 
-In order to exchange messages, contacts must first exchange public keys. This can be done in the same fashion as messages, with photos of QR codes being sent via traditional channels, or it can be done in person for increased security. Initial public key exchange follows a trust-on-first-use model, meaning initial public key exchanges are not validated for authenticity. Exchanging public keys in-person mitigates the risk of intercepted or modified public keys during initial exchange.
+Add a user name and generate your public key in the QRyptEye app. Public keys are dispayed as QR codes.
+
+Exchange public keys with your contacts by scanning each other's QR codes, either in person, or by sending a photo of your public key QR code to your contact via any messaging application or channel.
+
+After exchanging public keys, choose a contact and compose a plain text message offline in the QRyptEye app.
+
+QRyptEye encrypts the message and creates a QR code of the cipher text. 
+
+Take a photo of the QR code with your primary device, then send the photo to your contact via any messaging application or channel.
+
+When receiving a message, scan the received QR code with QRyptEye on your secondary offline device. If you have exchanged public keys with the sender, QRyptEye will verify authenticity, decrypt the messsage, and display the plain text.
+
+Note that initial exchange of public keys follows a trust-on-first-use model. Initial public key exchanges are not validated for authenticity. Exchanging public keys in-person mitigates the risk of intercepted or modified public keys during initial exchange.
 
 After initial public key exchange, all messages are cryptographically validated for authenticity.  
 
@@ -70,6 +83,13 @@ After initial public key exchange, all messages are cryptographically validated 
 - Kotlin 1.8+
 
 ### Installation
+Download the APK from the releases page, then transfer and install on your offline device.
+Allow Installation: Go to Settings > Apps > Three dots in the top right corner > Special access > Install unknown apps. Find your file manager and toggle on Allow from this source.
+Install the App: Open your file manager or downloads app, tap QRyptEye.apk, and select Install. If prompted about unknown apps, tap OK or Install anyway. Scan app for safety if prompted.
+Secure Your Device After installation, go back to Settings > Apps > Three dots in the top right corner > Special access > Install unknown apps and toggle off the permission you enabled.
+
+or
+
 1. Clone the repository
 ```bash
 git clone https://github.com/apett2/QRyptEye.git
