@@ -31,6 +31,28 @@ Note that initial exchange of public keys follows a trust-on-first-use model. In
 
 After initial public key exchange, all messages are cryptographically validated for authenticity.  
 
+### Installation
+Download the APK from the releases page, then transfer and install on your offline device.
+Allow Installation: Go to Settings > Apps > Three dots in the top right corner > Special access > Install unknown apps. Find your file manager and toggle on Allow from this source.
+Install the App: Open your file manager or downloads app, tap QRyptEye.apk, and select Install. If prompted about unknown apps, tap OK or Install anyway. Scan app for safety if prompted.
+Secure Your Device After installation, go back to Settings > Apps > Three dots in the top right corner > Special access > Install unknown apps and toggle off the permission you enabled.
+
+or
+
+1. Clone the repository
+```bash
+git clone https://github.com/apett2/QRyptEye.git
+cd QRyptEye
+```
+
+2. Open in Android Studio
+3. Build and run on device or emulator
+
+### Prerequisites for Android Studio Installation
+- Android Studio Arctic Fox or later
+- Android SDK 21+ (Android 5.0+)
+- Kotlin 1.8+
+
 ## 🔒 Security Features
 
 - **End-to-End Encryption**: RSA-2048 hybrid encryption with AES-256-GCM
@@ -77,62 +99,8 @@ After initial public key exchange, all messages are cryptographically validated 
 - **Cryptographic Verification**: Signature validation, replay detection
 - **Timestamp Validation**: Clock drift protection, freshness verification 
 
-### Prerequisites
-- Android Studio Arctic Fox or later
-- Android SDK 21+ (Android 5.0+)
-- Kotlin 1.8+
-
-### Installation
-Download the APK from the releases page, then transfer and install on your offline device.
-Allow Installation: Go to Settings > Apps > Three dots in the top right corner > Special access > Install unknown apps. Find your file manager and toggle on Allow from this source.
-Install the App: Open your file manager or downloads app, tap QRyptEye.apk, and select Install. If prompted about unknown apps, tap OK or Install anyway. Scan app for safety if prompted.
-Secure Your Device After installation, go back to Settings > Apps > Three dots in the top right corner > Special access > Install unknown apps and toggle off the permission you enabled.
-
-or
-
-1. Clone the repository
-```bash
-git clone https://github.com/apett2/QRyptEye.git
-cd QRyptEye
-```
-
-2. Open in Android Studio
-3. Build and run on device or emulator
-
-
-## 🧪 Testing
-
-The project includes comprehensive security testing:
-- **Cryptographic Tests**: Encryption/decryption validation
-- **Replay Attack Tests**: Timestamp and nonce validation
-- **Input Validation Tests**: Malicious content detection
-- **Performance Tests**: Large message handling
-
-## 📚 Documentation
-
-- **Security Design**: See `/docs/security-design.md`
-- **API Reference**: Generated KDoc in `/docs/api/`
-- **Architecture**: See `/docs/architecture.md`
-
-## 🤝 Contributing
-
-This project follows secure development practices:
-1. All crypto operations must be reviewed
-2. Input validation is mandatory for all external data
-3. Security tests required for new features
-4. Code review required for all changes
-
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔍 Security Auditing
-
-Security events are logged for:
-- Key generation and rotation
-- Message encryption/decryption
-- Signature verification
-- Replay attack detection
-- Input validation failures
 
 ---
