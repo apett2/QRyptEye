@@ -2,7 +2,7 @@
 
 End-to-end encryption is great, but what if your endpoint is compromised? 
 
-QRyptEye is an encrypted messaging app intended for installation on a secondary, fully offline device. Cipher text is transmitted with an online primary device via photos of QR codes. 
+QRyptEye is an encrypted messaging app intended for installation on a secondary offline device with networking utilities (wi-fi, bluetooth, cellular) disabled. Cipher text is embedded in a QR code and sent using an online primary device. Plain text stays air-gapped as long as networking is disabled on the secondary device.   
 
 
 ## ⚠️ CAUTION
